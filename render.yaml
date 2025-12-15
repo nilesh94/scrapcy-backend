@@ -1,0 +1,11 @@
+# This file helps Render configure the environment
+
+services:
+  - type: web
+    name: scrapcy-backend
+    env: python
+    rootDir: backend/
+    # Assuming you use Gunicorn to run the app in app.py
+    # The structure is: 'module:application_instance_name'
+    startCommand: gunicorn app:app
+    plan: free
