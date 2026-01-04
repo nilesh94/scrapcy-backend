@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from . import models, schemas, database
 
-# 1. Setup Logging
+# 1. Setup Logging (This puts logs in your Render dashboard)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -27,14 +27,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. Create Database Tables (With Error Handling)
+# 3. Create Database Tables
+# We wrap this in a try/except block so the app doesn't crash 
+# immediately if the DB is warming up.
 try:
-    logger.info("Attempting to connect to Oracle DB and create tables...")
+    logger.info("Connecting to Oracle Database...")
     models.Base.metadata.create_all(bind=database.engine)
-    logger.info("Tables created successfully.")
+    logger.info("Successfully connected and tables checked.")
 except Exception as e:
-    logger.error(f"Error creating tables: {e}")
-    # We continue running so /docs still loads, but DB actions will fail until fixed.
+    logger.error(f"Database connection warning: {e}")
 
 # Password Hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -65,7 +66,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
         phone=user.phone,
         hashed_password=hashed_pw,
         
-        # Company Fields
+        # Company Fields (Optional)
         company_name=user.companyName,
         business_type=user.businessType,
         industry=user.industry,
@@ -83,6 +84,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
+        logger.info(f"New user registered: {user.email}")
         return new_user
     except Exception as e:
         logger.error(f"Error saving user: {e}")
