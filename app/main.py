@@ -1,16 +1,21 @@
+import logging
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from . import models, schemas, database
 
+# 1. Setup Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Initialize App
 app = FastAPI()
 
-# CORS Config (Allow your frontend to talk to this backend)
+# 2. CORS Config
 origins = [
     "http://localhost:3000",
-    "https://scrapcy-frontend.onrender.com", # Your Render Frontend URL
+    "https://scrapcy-frontend.onrender.com", 
     "https://scrapcy.nexusmeta.in"
 ]
 
@@ -22,8 +27,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create Database Tables
-models.Base.metadata.create_all(bind=database.engine)
+# 3. Create Database Tables (With Error Handling)
+try:
+    logger.info("Attempting to connect to Oracle DB and create tables...")
+    models.Base.metadata.create_all(bind=database.engine)
+    logger.info("Tables created successfully.")
+except Exception as e:
+    logger.error(f"Error creating tables: {e}")
+    # We continue running so /docs still loads, but DB actions will fail until fixed.
 
 # Password Hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -54,7 +65,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
         phone=user.phone,
         hashed_password=hashed_pw,
         
-        # Company Fields (will be None if not provided)
+        # Company Fields
         company_name=user.companyName,
         business_type=user.businessType,
         industry=user.industry,
@@ -68,8 +79,12 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
     )
 
     # 4. Save to DB
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    return new_user
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+    except Exception as e:
+        logger.error(f"Error saving user: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database Error: Could not save user")
