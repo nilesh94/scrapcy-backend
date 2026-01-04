@@ -2,21 +2,31 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+import sys
 
-# Render provides the DB URL in this environment variable
-# Default to SQLite for local testing if no env var is found
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sql_app.db")
+# 1. Get the DB URL from Render Environment Variables
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Fix for Render's Postgres URL (it starts with postgres:// but SQLAlchemy needs postgresql://)
-if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
-    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if not SQLALCHEMY_DATABASE_URL:
+    print("❌ DATABASE_URL missing! Set it in Render.")
+    sys.exit(1)
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+print(f"🔌 Connecting to Oracle DB...")
+
+# 2. Create Engine using 'python-oracledb'
+try:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        # 'thick_mode=False' is the default, which is what we want for Render
+    )
+    print("✅ Engine created successfully.")
+except Exception as e:
+    print(f"❌ Error connecting to Oracle DB: {e}")
+    sys.exit(1)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
-# Dependency to get DB session
 def get_db():
     db = SessionLocal()
     try:
