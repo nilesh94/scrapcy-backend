@@ -8,7 +8,7 @@ import sys
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not SQLALCHEMY_DATABASE_URL:
-    print("❌ DATABASE_URL missing! Set it in Render.")
+    print("DATABASE_URL missing!")
     sys.exit(1)
 
 print(f"🔌 Connecting to Oracle DB...")
@@ -19,9 +19,9 @@ try:
         SQLALCHEMY_DATABASE_URL,
         # 'thick_mode=False' is the default, which is what we want for Render
     )
-    print("✅ Engine created successfully.")
+    print("Engine created successfully.")
 except Exception as e:
-    print(f"❌ Error connecting to Oracle DB: {e}")
+    print(f"Error connecting to Oracle DB: {e}")
     sys.exit(1)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
