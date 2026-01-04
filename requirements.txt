@@ -1,8 +1,7 @@
-# Flask is needed for the app.py example
-Flask
-
-# Gunicorn is the production web server Render will use
-gunicorn
-
-# Add your database driver (e.g., psycopg2-binary for PostgreSQL)
-# psycopg2-binary
+fastapi==0.109.0
+uvicorn==0.27.0
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+pydantic==2.5.3
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
