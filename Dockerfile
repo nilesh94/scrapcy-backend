@@ -1,8 +1,9 @@
-# 1. Use the full official Python image (Fixes "No matching distribution" error)
-FROM python:3.11
+# 1. Use the "bookworm" tag to ensure we get the stable Debian OS
+# This guarantees that 'libaio1' exists.
+FROM python:3.11-bookworm
 
-# 2. Update system and install Oracle dependencies
-# libaio1 is required for the Oracle Client libraries
+# 2. Install system dependencies
+# libaio1 is required for Oracle, and it IS available in bookworm
 RUN apt-get update && apt-get install -y \
     libaio1 \
     unzip \
@@ -11,11 +12,10 @@ RUN apt-get update && apt-get install -y \
 # 3. Set work directory
 WORKDIR /app
 
-# 4. Copy and install requirements
+# 4. Copy requirements and install them
 COPY requirements.txt .
 
 # Upgrade pip and install libraries
-# We use --verbose to see exactly what happens if it fails
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
