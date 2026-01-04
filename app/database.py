@@ -11,7 +11,7 @@ if not SQLALCHEMY_DATABASE_URL:
     print("DATABASE_URL missing!")
     sys.exit(1)
 
-print(f"🔌 Connecting to Oracle DB...")
+print(f"Connecting to Oracle DB...")
 
 # 2. Create Engine using 'python-oracledb'
 try:
