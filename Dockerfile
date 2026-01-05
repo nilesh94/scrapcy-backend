@@ -1,30 +1,33 @@
-# 1. Use Python 3.11 Bookworm (Stable Linux)
-FROM python:3.11-bookworm
+# 1. Use Python 3.9 on Debian Bullseye
+# This is the "Gold Standard" for stability. It avoids the "too new" issues of Debian 12/13.
+FROM python:3.9-slim-bullseye
 
 # 2. Install System Dependencies
-# libaio1 is required for Oracle.
+# We include 'build-essential' to allow compiling from source if needed
 RUN apt-get update && apt-get install -y \
+    build-essential \
     libaio1 \
-    unzip \
     wget \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Set Work Directory
+# 3. Set work directory
 WORKDIR /app
 
-# 4. CRITICAL FIX: Install python-oracledb DIRECTLY
-# We do this BEFORE copying requirements.txt to bypass any file formatting errors.
+# 4. Upgrade pip explicitly
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir python-oracledb
 
-# 5. Copy requirements and install the rest
+# 5. Install python-oracledb explicitly (Verbose mode for safety)
+RUN pip install --no-cache-dir -v python-oracledb
+
+# 6. Copy requirements and install the rest
 COPY requirements.txt .
-# We use 'grep -v' to ignore python-oracledb in the file since we just installed it
+# Remove python-oracledb from requirements.txt to avoid double-install
 RUN grep -v "python-oracledb" requirements.txt > reqs_clean.txt && \
     pip install --no-cache-dir -r reqs_clean.txt
 
-# 6. Copy application code
+# 7. Copy application code
 COPY . .
 
-# 7. Start the app
+# 8. Start the app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
