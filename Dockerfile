@@ -1,26 +1,28 @@
-# 1. Use the "bookworm" tag to ensure we get the stable Debian OS
-# This guarantees that 'libaio1' exists.
-FROM python:3.11-bookworm
+# 1. Force the platform to x86_64 (amd64)
+# This guarantees compatibility with Oracle's pre-compiled wheels.
+FROM --platform=linux/amd64 python:3.11-bookworm
 
 # 2. Install system dependencies
-# libaio1 is required for Oracle, and it IS available in bookworm
 RUN apt-get update && apt-get install -y \
     libaio1 \
     unzip \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # 3. Set work directory
 WORKDIR /app
 
-# 4. Copy requirements and install them
-COPY requirements.txt .
+# 4. Debug Step: Install python-oracledb explicitly FIRST
+# This isolates the error. If this works, the issue was your requirements file.
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir python-oracledb
 
-# Upgrade pip and install libraries
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# 5. Copy requirements and install the rest
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copy application code
+# 6. Copy application code
 COPY . .
 
-# 6. Start the app
+# 7. Start the app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "10000"]
