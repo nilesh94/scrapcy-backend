@@ -1,29 +1,27 @@
-# 1. Use Python 3.10 (Highly stable with Oracle drivers)
-# We use 'slim-bookworm' to get the correct Debian version for libaio
-FROM python:3.10-slim-bookworm
+# 1. Use Python 3.11 Bookworm (Stable Linux)
+FROM python:3.11-bookworm
 
 # 2. Install System Dependencies
-# 'build-essential': Contains GCC compilers (Critical for building from source)
-# 'libaio1': Required for Oracle Database communication
+# libaio1 is required for Oracle.
 RUN apt-get update && apt-get install -y \
-    build-essential \
     libaio1 \
     unzip \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Set work directory
+# 3. Set Work Directory
 WORKDIR /app
 
-# 4. Copy requirements and install them
-COPY requirements.txt .
-
-# Upgrade pip and build tools
+# 4. CRITICAL FIX: Install python-oracledb DIRECTLY
+# We do this BEFORE copying requirements.txt to bypass any file formatting errors.
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir python-oracledb
 
-# 5. Install Dependencies (Verbose mode)
-# If binary wheels fail, build-essential allows pip to compile from source
-RUN pip install --no-cache-dir -r requirements.txt
+# 5. Copy requirements and install the rest
+COPY requirements.txt .
+# We use 'grep -v' to ignore python-oracledb in the file since we just installed it
+RUN grep -v "python-oracledb" requirements.txt > reqs_clean.txt && \
+    pip install --no-cache-dir -r reqs_clean.txt
 
 # 6. Copy application code
 COPY . .
