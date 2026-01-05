@@ -1,9 +1,12 @@
-# 1. Force the platform to x86_64 (amd64)
-# This guarantees compatibility with Oracle's pre-compiled wheels.
-FROM --platform=linux/amd64 python:3.11-bookworm
+# 1. Use Python 3.10 (Highly stable with Oracle drivers)
+# We use 'slim-bookworm' to get the correct Debian version for libaio
+FROM python:3.10-slim-bookworm
 
-# 2. Install system dependencies
+# 2. Install System Dependencies
+# 'build-essential': Contains GCC compilers (Critical for building from source)
+# 'libaio1': Required for Oracle Database communication
 RUN apt-get update && apt-get install -y \
+    build-essential \
     libaio1 \
     unzip \
     wget \
@@ -12,13 +15,14 @@ RUN apt-get update && apt-get install -y \
 # 3. Set work directory
 WORKDIR /app
 
-# 4. Debug Step: Install python-oracledb explicitly FIRST
-# This isolates the error. If this works, the issue was your requirements file.
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir python-oracledb
-
-# 5. Copy requirements and install the rest
+# 4. Copy requirements and install them
 COPY requirements.txt .
+
+# Upgrade pip and build tools
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# 5. Install Dependencies (Verbose mode)
+# If binary wheels fail, build-essential allows pip to compile from source
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 6. Copy application code
