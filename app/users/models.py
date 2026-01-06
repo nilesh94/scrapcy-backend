@@ -8,7 +8,7 @@ class User(Base):
     __tablename__ = "users"
 
     # Primary Key (No Cycle for Oracle compatibility)
-    id = Column(Integer, Identity(start=1))
+    id = Column(Integer, Identity(start=1), primary_key=True)
     
     # Authentication Fields
     email = Column(String(255), unique=True, index=True, nullable=False)
