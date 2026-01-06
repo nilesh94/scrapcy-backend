@@ -7,7 +7,7 @@ class User(Base):
 
     # 1. PRIMARY KEY (Oracle Specific)
     # Using Identity(start=1, cycle=True) tells Oracle to auto-generate this number.
-    id = Column(Integer, Identity(start=1, cycle=True), primary_key=True, index=True)
+    id = Column(Integer, Identity(start=1), primary_key=True, index=True)
 
     # 2. CORE FIELDS (Required for everyone)
     role = Column(String(50), nullable=False)  # 'bidder' or 'company'
