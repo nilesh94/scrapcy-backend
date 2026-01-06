@@ -1,22 +1,24 @@
 import logging
-from fastapi import FastAPI, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from passlib.context import CryptContext
-from . import models, schemas, database
 
-# 1. Setup Logging (This puts logs in your Render dashboard)
+# Import from our new folders
+from app.database.connection import engine, Base
+from app.users import routes as user_routes
+
+# 1. Setup Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize App
-app = FastAPI()
+app = FastAPI(title="Scrapcy Backend")
 
 # 2. CORS Config
 origins = [
     "http://localhost:3000",
-    "https://scrapcy-frontend.onrender.com", 
-    "https://scrapcy.nexusmeta.in"
+    "https://scrapcy-frontend.onrender.com",
+    "https://scrapcy.nexusmeta.in",
+    "*"  # Keep this for now to ensure smooth connections
 ]
 
 app.add_middleware(
@@ -32,61 +34,16 @@ app.add_middleware(
 # immediately if the DB is warming up.
 try:
     logger.info("Connecting to Oracle Database...")
-    models.Base.metadata.create_all(bind=database.engine)
+    # This creates the 'users' table if it doesn't exist
+    Base.metadata.create_all(bind=engine)
     logger.info("Successfully connected and tables checked.")
 except Exception as e:
     logger.error(f"Database connection warning: {e}")
 
-# Password Hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
+# 4. Include Routers
+# This loads the /users/register endpoint from the other file
+app.include_router(user_routes.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Scrapcy API is running"}
-
-@app.post("/register", response_model=schemas.UserOut)
-def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
-    # 1. Check if email already exists
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    # 2. Hash the password
-    hashed_pw = get_password_hash(user.password)
-
-    # 3. Create User Object
-    new_user = models.User(
-        role=user.role,
-        first_name=user.firstName,
-        last_name=user.lastName,
-        email=user.email,
-        phone=user.phone,
-        hashed_password=hashed_pw,
-        
-        # Company Fields (Optional)
-        company_name=user.companyName,
-        business_type=user.businessType,
-        industry=user.industry,
-        turnover=user.turnover,
-        gst_number=user.gstNumber,
-        pan_number=user.panNumber,
-        address=user.address,
-        city=user.city,
-        state=user.state,
-        pincode=user.pincode
-    )
-
-    # 4. Save to DB
-    try:
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        logger.info(f"New user registered: {user.email}")
-        return new_user
-    except Exception as e:
-        logger.error(f"Error saving user: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database Error: Could not save user")
+    return {"message": "Scrapcy API is running & modularized!"}
