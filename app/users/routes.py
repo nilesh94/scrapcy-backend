@@ -40,7 +40,19 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return new_user
+
+        access_token = utils.create_access_token(data={"sub": new_user.email, "role": new_user.role})
+        
+        return {
+            "message": "Registration Successful",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "email": new_user.email,
+                "first_name": new_user.first_name,
+                "role": new_user.role
+            }
+        }
 
     except HTTPException as he:
         # Re-raise standard HTTP exceptions (like 400 Bad Request)
