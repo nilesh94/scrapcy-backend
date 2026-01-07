@@ -23,18 +23,30 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
 
-    # 2. Hash the password
+    # 2. VALIDATION: Check Seller Requirements
+    # If the role is 'seller', strictly enforce company details.
+    # We check if these fields are None or Empty Strings.
+    if user.role == 'seller':
+        if not user.company_name or not user.gst_number or not user.address:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sellers must provide Company Name, GST Number, and Registered Address."
+            )
+
+    # 3. Hash the password
     hashed_pwd = utils.hash_password(user.password)
 
-    # 3. Create the User Object
+    # 4. Create the User Object
     # We use model_dump(exclude={'password'}) to convert Pydantic model to a dict,
     # skipping the plain password so we can swap it for the hashed one.
+    # NOTE: user.model_dump() will automatically include company_name, gst_number etc. 
+    # as None if they were sent as null from the frontend (for Bidders).
     new_user = models.User(
         **user.model_dump(exclude={"password"}), 
         hashed_password=hashed_pwd
     )
 
-    # 4. Save to Database
+    # 5. Save to Database
     try:
         db.add(new_user)
         db.commit()
@@ -42,5 +54,6 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         return new_user
     except Exception as e:
         db.rollback()
-        # Log the error internally here if you had a logger
+        # Log the error internally
+        print(f"Database Insert Error: {e}") 
         raise HTTPException(status_code=500, detail=f"Database Error: {str(e)}")
