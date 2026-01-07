@@ -65,3 +65,37 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             status_code=500,
             content={"error": "Database Transaction Failed", "details": str(e)}
         )
+
+# --- LOGIN ---
+@router.post("/login")
+def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
+    try:
+        # 1. Find User by Email
+        user = db.query(models.User).filter(models.User.email == user_credentials.email).first()
+
+        # 2. Validate User & Password
+        if not user:
+            raise HTTPException(status_code=403, detail="Invalid Credentials")
+        
+        if not utils.verify_password(user_credentials.password, user.hashed_password):
+            raise HTTPException(status_code=403, detail="Invalid Credentials")
+
+        # 3. Generate Token
+        access_token = utils.create_access_token(data={"sub": user.email, "role": user.role})
+
+        # 4. Return Success
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "first_name": user.first_name,
+                "email": user.email,
+                "role": user.role
+            }
+        }
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Login Error: {e}")
+        return JSONResponse(status_code=500, content={"error": "Login Failed", "details": str(e)})
