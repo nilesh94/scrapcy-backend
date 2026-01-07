@@ -7,6 +7,7 @@ class User(Base):
     # If the above fails, try: __tablename__ = "users" 
     # (Oracle usually defaults unquoted names to uppercase, 
     # but since you used quotes in creation, we must match carefully).
+    __table_args__ = {"schema": "ADMIN"}
 
     # Explicit Mapping: Python Variable = Column("EXACT_DB_COLUMN_NAME", Type)
     id = Column("ID", Integer, primary_key=True)
