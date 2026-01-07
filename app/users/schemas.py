@@ -29,7 +29,12 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
-# 3. Output Schema (What we send back to Frontend)
+# 3. Login Input
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+    
+# 4. Output Schema (What we send back to Frontend)
 class UserOut(UserBase):
     id: int
     # REMOVED: is_active: int  <-- removed because your Oracle Table does not have this column
