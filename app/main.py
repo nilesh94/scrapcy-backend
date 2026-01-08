@@ -2,23 +2,32 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import from our new folders
+# 1. Import Database Connection
 from app.database.connection import engine, Base
-from app.users import routes as user_routes
 
-# 1. Setup Logging
+# 2. Import Models 
+# (CRITICAL: Must be imported so Base.metadata knows they exist to create tables)
+from app.models import users as user_models
+from app.models import scrapListing as scrap_models
+
+# 3. Import Routers 
+# (Corrected paths based on your screenshot structure)
+from app.routes import users as user_routes
+from app.routes import scrapListing as scrap_routes
+
+# Setup Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize App
 app = FastAPI(title="Scrapcy Backend")
 
-# 2. CORS Config
+# CORS Config
 origins = [
     "http://localhost:3000",
     "https://scrapcy-frontend.onrender.com",
     "https://scrapcy.nexusmeta.in",
-    "*"  # Keep this for now to ensure smooth connections
+    "*", 
 ]
 
 app.add_middleware(
@@ -29,20 +38,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. Create Database Tables
-# We wrap this in a try/except block so the app doesn't crash 
-# immediately if the DB is warming up.
+# Create Database Tables
 try:
-    logger.info("Connecting to Oracle Database...")
-    # This creates the 'users' table if it doesn't exist
+    logger.info("Connecting to Database...")
+    # This checks for models imported above and creates tables if missing
     Base.metadata.create_all(bind=engine)
     logger.info("Successfully connected and tables checked.")
 except Exception as e:
     logger.error(f"Database connection warning: {e}")
 
-# 4. Include Routers
-# This loads the /users/register endpoint from the other file
+# Include Routers
+# This maps the routes defined in your files to the API
 app.include_router(user_routes.router)
+app.include_router(scrap_routes.router)
 
 @app.get("/")
 def read_root():
