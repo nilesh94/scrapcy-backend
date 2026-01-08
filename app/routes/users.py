@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse # Import this
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+
+# Correct Imports based on your folder structure
 from app.database.connection import get_db
-from . import models, schemas, utils
+from app.models.users import User  # Import the User model directly
+from app.schemas import userSchema as schemas # Import userSchema as schemas
+from app.utils import userUtils as utils # Import userUtils as utils
 
 router = APIRouter(
     prefix="/users",
@@ -13,7 +17,7 @@ router = APIRouter(
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     try:
         # 1. Check if email already exists
-        existing_user = db.query(models.User).filter(models.User.email == user.email).first()
+        existing_user = db.query(User).filter(User.email == user.email).first()
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, 
@@ -32,7 +36,8 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         hashed_pwd = utils.hash_password(user.password)
 
         # 4. Create User
-        new_user = models.User(
+        # We exclude 'password' because the model expects 'hashed_password'
+        new_user = User(
             **user.model_dump(exclude={"password"}), 
             hashed_password=hashed_pwd
         )
@@ -41,8 +46,10 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(new_user)
 
+        # 5. Create Token immediately for auto-login
         access_token = utils.create_access_token(data={"sub": new_user.email, "role": new_user.role})
         
+        # Return custom dictionary that matches the response_model or adds extra info
         return {
             "message": "Registration Successful",
             "access_token": access_token,
@@ -59,8 +66,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         raise he
     except Exception as e:
         db.rollback()
-        # DEBUGGING: This will print the EXACT error to your curl response
-        # so you can see if it is "Table not found" or "Column missing"
+        # DEBUGGING: This returns the exact database error to the client/logs
         return JSONResponse(
             status_code=500,
             content={"error": "Database Transaction Failed", "details": str(e)}
@@ -71,7 +77,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
     try:
         # 1. Find User by Email
-        user = db.query(models.User).filter(models.User.email == user_credentials.email).first()
+        user = db.query(User).filter(User.email == user_credentials.email).first()
 
         # 2. Validate User & Password
         if not user:
