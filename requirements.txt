@@ -8,3 +8,6 @@ bcrypt==3.2.2
 python-multipart
 python-oracledb
 python-jose[cryptography]
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
