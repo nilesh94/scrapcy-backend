@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from database import Base
+from app.database.connection import Base
 import datetime
 
 class ScrapListing(Base):
