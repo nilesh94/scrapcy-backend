@@ -8,7 +8,7 @@ from app.database.connection import Base
 class ScrapListing(Base):
     __tablename__ = "scrap_listings"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     
     # Seller Details - ADDED LENGTHS TO ALL STRINGS
     seller_name = Column(String(255), nullable=False)
@@ -33,7 +33,7 @@ class ScrapListing(Base):
 class ScrapImage(Base):
     __tablename__ = "scrap_images"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     scrap_listing_id = Column(Integer, ForeignKey("scrap_listings.id"), nullable=False)
     
     # Added lengths here too
