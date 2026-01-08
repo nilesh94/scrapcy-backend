@@ -1,5 +1,5 @@
 
-# File: app/users/schemas.py
+# File: app/schemas/userSchema.py
 
 from pydantic import BaseModel, EmailStr
 from typing import Optional
