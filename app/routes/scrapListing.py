@@ -4,11 +4,9 @@ from typing import List, Optional
 import uuid
 import io
 
-# --- CORRECTED IMPORTS ---
 from app.database.connection import get_db
 from app.models.scrapListing import ScrapListing, ScrapImage
-from app.schemas import scrapListingSchema as schemas # For Pydantic Response Models
-# Make sure you created this file in app/utils/driveUtils.py
+from app.schemas import scrapListingSchema as schemas
 from app.utils.driveUtils import upload_file_to_drive 
 
 router = APIRouter(
@@ -19,7 +17,6 @@ router = APIRouter(
 # --- 1. CREATE LISTING (ADMIN) ---
 @router.post("/add", status_code=status.HTTP_201_CREATED)
 async def add_scrap_listing(
-    # Form Data
     seller_name: str = Form(...),
     company_name: str = Form(...),
     email: str = Form(...),
@@ -27,16 +24,14 @@ async def add_scrap_listing(
     gst_number: str = Form(...),
     scrap_type: str = Form(...),
     quantity: float = Form(...),
+    unit: str = Form(...),              # Quantity Unit
     price_per_unit: float = Form(...),
-    unit: str = Form(...),
+    price_unit: str = Form(...),        # NEW: Price Unit
     
-    # Multiple Files
     images: List[UploadFile] = File(...),
-    
-    # DB Session
     db: Session = Depends(get_db)
 ):
-    # A. Check for Duplicate GST (Business Rule)
+    # A. Check for Duplicate GST
     if gst_number:
         existing_listing = db.query(ScrapListing).filter(ScrapListing.gst_number == gst_number).first()
         if existing_listing:
@@ -51,13 +46,14 @@ async def add_scrap_listing(
         gst_number=gst_number,
         scrap_type=scrap_type,
         quantity=quantity,
-        price_per_unit=price_per_unit,
         unit=unit,
+        price_per_unit=price_per_unit,
+        price_unit=price_unit, # Save the new field
         is_admin_entry=True
     )
     
     db.add(new_listing)
-    db.flush() # Flush to generate ID
+    db.flush()
     db.refresh(new_listing)
 
     # C. Handle Image Uploads
@@ -65,16 +61,10 @@ async def add_scrap_listing(
     
     try:
         for img in images:
-            # Generate Unique Filename
             unique_filename = f"{new_listing.id}_{uuid.uuid4()}_{img.filename}"
-            
-            # Read file content
             file_content = io.BytesIO(await img.read())
-            
-            # Upload to Google Drive
             public_url = upload_file_to_drive(file_content, unique_filename, img.content_type)
             
-            # Create Child Image Record
             new_image = ScrapImage(
                 scrap_listing_id=new_listing.id,
                 seller_email=email,
@@ -97,32 +87,18 @@ async def add_scrap_listing(
         print(f"Upload Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload images: {str(e)}")
 
-
-# --- 2. GET ALL LISTINGS (MARKETPLACE) ---
-# Added response_model to ensure images are nested correctly in JSON
+# ... (Keep get_all_listings and get_listing_detail unchanged) ...
+# Just ensure response_model is still there
 @router.get("/all", response_model=List[schemas.ScrapListingResponse])
-def get_all_listings(
-    scrap_type: Optional[str] = None, 
-    skip: int = 0, 
-    limit: int = 20, 
-    db: Session = Depends(get_db)
-):
+def get_all_listings(scrap_type: Optional[str] = None, skip: int = 0, limit: int = 20, db: Session = Depends(get_db)):
     query = db.query(ScrapListing).options(joinedload(ScrapListing.images))
-    
     if scrap_type and scrap_type != "All":
         query = query.filter(ScrapListing.scrap_type == scrap_type)
-        
-    listings = query.offset(skip).limit(limit).all()
-    return listings
+    return query.offset(skip).limit(limit).all()
 
-
-# --- 3. GET SINGLE LISTING DETAILS ---
-# Added response_model here as well
 @router.get("/{listing_id}", response_model=schemas.ScrapListingResponse)
 def get_listing_detail(listing_id: int, db: Session = Depends(get_db)):
     listing = db.query(ScrapListing).options(joinedload(ScrapListing.images)).filter(ScrapListing.id == listing_id).first()
-    
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-        
     return listing
