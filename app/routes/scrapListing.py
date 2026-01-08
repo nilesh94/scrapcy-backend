@@ -4,10 +4,12 @@ from typing import List, Optional
 import uuid
 import io
 
-# Imports from your project structure
-from database import get_db
-from models import ScrapListing, ScrapImage
-from drive_utils import upload_file_to_drive
+# --- CORRECTED IMPORTS ---
+from app.database.connection import get_db
+from app.models.scrapListing import ScrapListing, ScrapImage
+from app.schemas import scrapListingSchema as schemas # For Pydantic Response Models
+# Make sure you created this file in app/utils/driveUtils.py
+from app.utils.driveUtils import upload_file_to_drive 
 
 router = APIRouter(
     prefix="/scrap",
@@ -17,7 +19,7 @@ router = APIRouter(
 # --- 1. CREATE LISTING (ADMIN) ---
 @router.post("/add", status_code=status.HTTP_201_CREATED)
 async def add_scrap_listing(
-    # Form Data (Matches your frontend AdminDashboard.js)
+    # Form Data
     seller_name: str = Form(...),
     company_name: str = Form(...),
     email: str = Form(...),
@@ -35,7 +37,6 @@ async def add_scrap_listing(
     db: Session = Depends(get_db)
 ):
     # A. Check for Duplicate GST (Business Rule)
-    # Note: If GST is provided, check uniqueness. If not provided, skip.
     if gst_number:
         existing_listing = db.query(ScrapListing).filter(ScrapListing.gst_number == gst_number).first()
         if existing_listing:
@@ -56,7 +57,7 @@ async def add_scrap_listing(
     )
     
     db.add(new_listing)
-    db.flush() # Flush to generate new_listing.id without committing transaction yet
+    db.flush() # Flush to generate ID
     db.refresh(new_listing)
 
     # C. Handle Image Uploads
@@ -64,10 +65,10 @@ async def add_scrap_listing(
     
     try:
         for img in images:
-            # Generate Unique Filename: ID_UUID_OriginalName
+            # Generate Unique Filename
             unique_filename = f"{new_listing.id}_{uuid.uuid4()}_{img.filename}"
             
-            # Read file into memory for the Drive Uploader
+            # Read file content
             file_content = io.BytesIO(await img.read())
             
             # Upload to Google Drive
@@ -83,7 +84,6 @@ async def add_scrap_listing(
             db.add(new_image)
             uploaded_image_urls.append(public_url)
             
-        # If we reached here, all images uploaded successfully logic-wise
         db.commit()
         
         return {
@@ -93,13 +93,14 @@ async def add_scrap_listing(
         }
 
     except Exception as e:
-        db.rollback() # Undo the listing creation if image upload fails
+        db.rollback()
         print(f"Upload Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload images: {str(e)}")
 
 
 # --- 2. GET ALL LISTINGS (MARKETPLACE) ---
-@router.get("/all")
+# Added response_model to ensure images are nested correctly in JSON
+@router.get("/all", response_model=List[schemas.ScrapListingResponse])
 def get_all_listings(
     scrap_type: Optional[str] = None, 
     skip: int = 0, 
@@ -116,7 +117,8 @@ def get_all_listings(
 
 
 # --- 3. GET SINGLE LISTING DETAILS ---
-@router.get("/{listing_id}")
+# Added response_model here as well
+@router.get("/{listing_id}", response_model=schemas.ScrapListingResponse)
 def get_listing_detail(listing_id: int, db: Session = Depends(get_db)):
     listing = db.query(ScrapListing).options(joinedload(ScrapListing.images)).filter(ScrapListing.id == listing_id).first()
     
