@@ -20,11 +20,11 @@ try:
     # This triggers the JWT signing and sending to Google
     creds.refresh(request)
     
-    print("\n✅ SUCCESS: The key is valid and authentication worked!")
+    print("\nSUCCESS: The key is valid and authentication worked!")
     print(f"Access Token: {creds.token[:10]}...")
 
 except Exception as e:
-    print("\n❌ FAILURE: Authentication failed.")
+    print("\nFAILURE: Authentication failed.")
     print(f"Error Details: {e}")
     
     # Check for common formatting issues
@@ -33,5 +33,5 @@ except Exception as e:
         data = json.load(f)
         key = data.get('private_key', '')
         if "\\n" in key and "\n" not in key:
-            print("\n⚠️ DIAGNOSIS: It looks like your newlines are double-escaped (\\n).")
+            print("\nDIAGNOSIS: It looks like your newlines are double-escaped (\\n).")
             print("Try replacing \\n with actual newlines in the file.")
