@@ -9,22 +9,30 @@ class ScrapListing(Base):
 
     id = Column(Integer, primary_key=True)
     
-    # Seller Details
+    # --- Seller Details ---
     seller_name = Column(String(255), nullable=False)
     company_name = Column(String(255), nullable=True)
     gst_number = Column(String(50), unique=True, nullable=True)
     email = Column(String(255), nullable=False)
     phone = Column(String(50), nullable=False)
+    alternate_phone = Column(String(50), nullable=True) # NEW: Alternate Contact
     
-    # Scrap Details
+    # --- Scrap Details ---
     scrap_type = Column(String(100), nullable=False)
+    grade = Column(String(100), nullable=True)          # NEW: Grade (e.g., HMS 1, Grade A)
+    description = Column(String(1000), nullable=True)   # NEW: Detailed Description
+    
     quantity = Column(Float, nullable=False)
-    unit = Column(String(50), nullable=False)       # e.g., 'Tons', 'Kg', 'Liters'
+    unit = Column(String(50), nullable=False)
     
     price_per_unit = Column(Float, nullable=False)
-    price_unit = Column(String(50), nullable=False) # NEW COLUMN: e.g., 'Per Ton', 'Per Kg'
+    price_unit = Column(String(50), nullable=False)
     
-    # Metadata
+    # --- Location & Pickup ---
+    address = Column(String(500), nullable=False)       # NEW: Detailed Location
+    pickup_conditions = Column(String(500), nullable=True) # NEW: Pickup rules
+    
+    # --- Metadata ---
     is_admin_entry = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
