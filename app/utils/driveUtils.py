@@ -9,7 +9,7 @@ SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'service_account.json')
 
 # 2. PASTE YOUR FOLDER ID HERE
 # (Get this from your Browser URL when inside the shared Drive folder)
-PARENT_FOLDER_ID = '18aO52EB8Tyc_dBXEpKI7FWc00Cr-dLJs'
+PARENT_FOLDER_ID = '18aO52EB8Tyc_dbXEpKl7FWc00Cr-dLJs'
 
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
