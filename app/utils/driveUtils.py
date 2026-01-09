@@ -50,10 +50,9 @@ def upload_file_to_drive(file_obj, filename, mime_type):
         body={'type': 'anyone', 'role': 'reader'},
     ).execute()
 
-    # View Link
-    direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
+    # view link
+    direct_link = f"https://lh3.googleusercontent.com/d/{file_id}"
     
-    # --- CHANGE: Return Dictionary ---
     return {
         "id": file_id, 
         "url": direct_link
