@@ -7,7 +7,7 @@ import io
 from app.database.connection import get_db
 from app.models.scrapListing import ScrapListing, ScrapImage
 from app.schemas import scrapListingSchema as schemas
-from app.utils.driveUtils import upload_file_to_drive 
+from app.utils.driveUtils import upload_file_to_drive, delete_file_from_drive 
 
 router = APIRouter(
     prefix="/scrap",
@@ -49,11 +49,11 @@ async def add_scrap_listing(
             detail="Maximum 5 images allowed per listing."
         )
     
-    # A. Check for Duplicate GST
-    if gst_number:
-        existing_listing = db.query(ScrapListing).filter(ScrapListing.gst_number == gst_number).first()
-        if existing_listing:
-            raise HTTPException(status_code=400, detail="A listing with this GST Number already exists.")
+    # A. Check for Duplicate GST (Optional: You might want to allow same GST for different scraps)
+    # if gst_number:
+    #     existing_listing = db.query(ScrapListing).filter(ScrapListing.gst_number == gst_number).first()
+    #     if existing_listing:
+    #         raise HTTPException(status_code=400, detail="A listing with this GST Number already exists.")
 
     # B. Create the Parent Listing
     new_listing = ScrapListing(
@@ -89,16 +89,19 @@ async def add_scrap_listing(
         for img in images:
             unique_filename = f"{new_listing.id}_{uuid.uuid4()}_{img.filename}"
             file_content = io.BytesIO(await img.read())
-            public_url = upload_file_to_drive(file_content, unique_filename, img.content_type)
+            
+            # --- UPDATE: Returns dict { 'id': '...', 'url': '...' } ---
+            upload_result = upload_file_to_drive(file_content, unique_filename, img.content_type)
             
             new_image = ScrapImage(
                 scrap_listing_id=new_listing.id,
                 seller_email=email,
-                image_url=public_url,
+                image_url=upload_result['url'],       # Viewable Link
+                drive_file_id=upload_result['id'],    # <--- Saving Drive ID for deletion
                 is_active=True
             )
             db.add(new_image)
-            uploaded_image_urls.append(public_url)
+            uploaded_image_urls.append(upload_result['url'])
             
         db.commit()
         
@@ -131,3 +134,32 @@ def get_listing_detail(listing_id: int, db: Session = Depends(get_db)):
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return listing
+
+# --- 4. DELETE LISTING ---
+@router.delete("/{listing_id}")
+def delete_scrap_listing(listing_id: int, db: Session = Depends(get_db)):
+    # 1. Find Listing
+    listing = db.query(ScrapListing).filter(ScrapListing.id == listing_id).first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    # 2. Find Associated Images
+    images = db.query(ScrapImage).filter(ScrapImage.scrap_listing_id == listing_id).all()
+
+    # 3. Delete from Google Drive
+    for img in images:
+        if img.drive_file_id:
+            delete_file_from_drive(img.drive_file_id)
+        else:
+            print(f"Skipping Drive delete for image {img.id} (No Drive ID found)")
+
+    # 4. Delete from Database
+    # Note: If you have ON DELETE CASCADE set in your DB models, deleting the listing 
+    # might automatically delete images. But being explicit here is safer for logic.
+    for img in images:
+        db.delete(img)
+        
+    db.delete(listing)
+    db.commit()
+
+    return {"detail": "Listing and associated Drive images deleted successfully"}
