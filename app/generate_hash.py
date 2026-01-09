@@ -1,15 +1,10 @@
-# You might need to run: pip install passlib bcrypt
-from passlib.context import CryptContext
+import bcrypt
+# This is the password you want to use for Login
+password = b"niLE$#1994" 
 
-# 1. Setup the hashing configuration (Same as your backend)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Generate the Hash
+hashed = bcrypt.hashpw(password, bcrypt.gensalt())
 
-# 2. Define your Admin Password
-admin_password = "Admin@123"
-
-# 3. Generate Hash
-hashed_password = pwd_context.hash(admin_password)
-
-print("--- COPY THIS HASH ---")
-print(hashed_password)
-print("----------------------")
+# Print the string to copy
+print(hashed.decode())
+print("NILESH")
