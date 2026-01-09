@@ -5,7 +5,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# 1. SCOPES: We need full Drive access
+# 1. SCOPES
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 # 2. FILE PATHS
@@ -13,37 +13,30 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
 TOKEN_FILE = os.path.join(BASE_DIR, 'token.json')
 
-# 3. YOUR FOLDER ID (From your link)
+# 3. YOUR FOLDER ID
 PARENT_FOLDER_ID = '18aO52EB8Tyc_dbXEpKl7FWc00Cr-dLJs'
 
 def authenticate_drive():
     creds = None
-    # A. Load existing token if available
     if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-    
-    # B. If no valid token, let user log in
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception:
-                # If refresh fails, delete token and re-login
-                os.remove(TOKEN_FILE)
-                return authenticate_drive()
-        else:
-            # This flow opens a browser window for you to login
-            if not os.path.exists(CREDENTIALS_FILE):
-                raise FileNotFoundError("Missing 'credentials.json'. Download it from Google Cloud Console (OAuth Client ID).")
-                
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
-            
-        # C. Save the credentials for the next run
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        except Exception:
+            creds = None
 
-    return build('drive', 'v3', credentials=creds)
+    if creds and creds.valid:
+        return build('drive', 'v3', credentials=creds)
+
+    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            with open(TOKEN_FILE, 'w') as token:
+                token.write(creds.to_json())
+            return build('drive', 'v3', credentials=creds)
+        except Exception:
+            pass
+
+    raise Exception(f"Authentication Failed! Token file at {TOKEN_FILE} is invalid or missing.")
 
 def upload_file_to_drive(file_obj, filename, mime_type):
     try:
@@ -59,16 +52,24 @@ def upload_file_to_drive(file_obj, filename, mime_type):
         file = service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webContentLink, webViewLink'
+            fields='id'  # <--- WE ONLY NEED THE ID NOW
         ).execute()
+
+        file_id = file.get('id')
 
         # Make Public
         service.permissions().create(
-            fileId=file.get('id'),
+            fileId=file_id,
             body={'type': 'anyone', 'role': 'reader'},
         ).execute()
 
-        return file.get('webViewLink')
+        # --- CRITICAL FIX ---
+        # Construct a DIRECT IMAGE LINK using the lh3 domain (Google's Image CDN).
+        # webViewLink is a HTML page, which breaks <img> tags.
+        # This link points directly to the image binary.
+        direct_link = f"https://lh3.googleusercontent.com/d/{file_id}"
+        
+        return direct_link
 
     except Exception as e:
         print(f"Drive Upload Error: {e}")
