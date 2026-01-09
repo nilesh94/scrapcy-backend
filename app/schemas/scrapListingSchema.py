@@ -17,16 +17,26 @@ class ScrapImageResponse(ScrapImageBase):
 
 # --- LISTING SCHEMAS ---
 class ScrapListingBase(BaseModel):
+    # Seller
     seller_name: str
     company_name: Optional[str] = None
     gst_number: Optional[str] = None
     email: EmailStr
     phone: str
+    alternate_phone: Optional[str] = None  # NEW
+    
+    # Scrap
     scrap_type: str
+    grade: Optional[str] = None            # NEW
+    description: Optional[str] = None      # NEW
     quantity: float
-    unit: str               # Quantity Unit
+    unit: str
     price_per_unit: float
-    price_unit: str         # NEW: Price Unit
+    price_unit: str
+    
+    # Location
+    address: str                           # NEW
+    pickup_conditions: Optional[str] = None # NEW
 
 class ScrapListingCreate(ScrapListingBase):
     is_admin_entry: bool = False
