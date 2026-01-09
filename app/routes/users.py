@@ -4,16 +4,18 @@ from sqlalchemy.orm import Session
 
 # Correct Imports based on your folder structure
 from app.database.connection import get_db
-from app.models.users import User  # Import the User model directly
-from app.schemas import userSchema as schemas # Import userSchema as schemas
-from app.utils import userUtils as utils # Import userUtils as utils
+from app.models.users import User 
+from app.schemas import userSchema as schemas 
+from app.utils import userUtils as utils 
 
 router = APIRouter(
     prefix="/users",
     tags=["Users"]
 )
 
-@router.post("/register", response_model=schemas.UserOut)
+# --- REGISTER ---
+# CHANGE 1: Update response_model to the new schema that accepts token + user
+@router.post("/register", response_model=schemas.UserRegistrationResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     try:
         # 1. Check if email already exists
@@ -36,7 +38,6 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         hashed_pwd = utils.hash_password(user.password)
 
         # 4. Create User
-        # We exclude 'password' because the model expects 'hashed_password'
         new_user = User(
             **user.model_dump(exclude={"password"}), 
             hashed_password=hashed_pwd
@@ -49,24 +50,20 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         # 5. Create Token immediately for auto-login
         access_token = utils.create_access_token(data={"sub": new_user.email, "role": new_user.role})
         
-        # Return custom dictionary that matches the response_model or adds extra info
+        # CHANGE 2: Return the structure matching UserRegistrationResponse
+        # We pass 'new_user' (the full DB object) to the 'user' key.
+        # Pydantic will automatically extract 'id', 'created_at', etc. from it.
         return {
             "message": "Registration Successful",
             "access_token": access_token,
             "token_type": "bearer",
-            "user": {
-                "email": new_user.email,
-                "first_name": new_user.first_name,
-                "role": new_user.role
-            }
+            "user": new_user 
         }
 
     except HTTPException as he:
-        # Re-raise standard HTTP exceptions (like 400 Bad Request)
         raise he
     except Exception as e:
         db.rollback()
-        # DEBUGGING: This returns the exact database error to the client/logs
         return JSONResponse(
             status_code=500,
             content={"error": "Database Transaction Failed", "details": str(e)}

@@ -43,3 +43,10 @@ class UserOut(UserBase):
 
     class Config:
         from_attributes = True
+
+# 5. NEW: Registration Response Schema (Token + User)
+class UserRegistrationResponse(BaseModel):
+    message: str
+    access_token: str
+    token_type: str
+    user: UserOut

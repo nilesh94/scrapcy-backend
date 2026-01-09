@@ -2,16 +2,10 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 
-# ==========================
-# 1. IMAGE SCHEMAS
-# ==========================
-
+# --- IMAGE SCHEMAS ---
 class ScrapImageBase(BaseModel):
     image_url: str
     is_active: bool = True
-
-class ScrapImageCreate(ScrapImageBase):
-    pass
 
 class ScrapImageResponse(ScrapImageBase):
     id: int
@@ -19,36 +13,38 @@ class ScrapImageResponse(ScrapImageBase):
     uploaded_at: datetime
 
     class Config:
-        from_attributes = True  # Allows Pydantic to read SQLAlchemy models
+        from_attributes = True
 
-# ==========================
-# 2. LISTING SCHEMAS
-# ==========================
-
-# Shared properties
+# --- LISTING SCHEMAS ---
 class ScrapListingBase(BaseModel):
+    # Seller
     seller_name: str
     company_name: Optional[str] = None
     gst_number: Optional[str] = None
-    email: EmailStr  # Validates that it is a proper email format
+    email: EmailStr
     phone: str
-    scrap_type: str  # e.g. "Ferrous", "Non-Ferrous"
+    alternate_phone: Optional[str] = None  # NEW
+    
+    # Scrap
+    scrap_type: str
+    grade: Optional[str] = None            # NEW
+    description: Optional[str] = None      # NEW
     quantity: float
+    unit: str
     price_per_unit: float
-    unit: str        # e.g. "Kg", "Tons"
+    price_unit: str
+    
+    # Location
+    address: str                           # NEW
+    pickup_conditions: Optional[str] = None # NEW
 
-# Properties to receive on item creation (if using JSON body)
-# Note: Your current route uses Form(...), but this is good to have.
 class ScrapListingCreate(ScrapListingBase):
     is_admin_entry: bool = False
 
-# Properties to return to client (The Response)
 class ScrapListingResponse(ScrapListingBase):
     id: int
     is_admin_entry: bool
     created_at: datetime
-
-    # NESTED IMAGES: This automatically fetches the related images
     images: List[ScrapImageResponse] = []
 
     class Config:

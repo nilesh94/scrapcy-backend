@@ -8,3 +8,4 @@ hashed = bcrypt.hashpw(password, bcrypt.gensalt())
 # Print the string to copy
 print(hashed.decode())
 print("NILESH")
+
