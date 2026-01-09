@@ -22,26 +22,33 @@ async def add_scrap_listing(
     company_name: str = Form(...),
     email: str = Form(...),
     phone: str = Form(...),
-    alternate_phone: Optional[str] = Form(None), # NEW
+    alternate_phone: Optional[str] = Form(None),
     gst_number: str = Form(...),
     
     # Scrap Details
     scrap_type: str = Form(...),
-    grade: Optional[str] = Form(None),           # NEW
-    description: Optional[str] = Form(None),     # NEW
+    grade: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     quantity: float = Form(...),
     unit: str = Form(...),
     price_per_unit: float = Form(...),
     price_unit: str = Form(...),
     
     # Location Details
-    address: str = Form(...),                    # NEW
-    pickup_conditions: Optional[str] = Form(None), # NEW
+    address: str = Form(...),
+    pickup_conditions: Optional[str] = Form(None),
     
     # Files & DB
     images: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
+    # --- VALIDATION: IMAGE COUNT ---
+    if len(images) > 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Maximum 5 images allowed per listing."
+        )
+    
     # A. Check for Duplicate GST
     if gst_number:
         existing_listing = db.query(ScrapListing).filter(ScrapListing.gst_number == gst_number).first()
@@ -54,19 +61,19 @@ async def add_scrap_listing(
         company_name=company_name,
         email=email,
         phone=phone,
-        alternate_phone=alternate_phone, # NEW
+        alternate_phone=alternate_phone,
         gst_number=gst_number,
         
         scrap_type=scrap_type,
-        grade=grade,                     # NEW
-        description=description,         # NEW
+        grade=grade,
+        description=description,
         quantity=quantity,
         unit=unit,
         price_per_unit=price_per_unit,
         price_unit=price_unit,
         
-        address=address,                 # NEW
-        pickup_conditions=pickup_conditions, # NEW
+        address=address,
+        pickup_conditions=pickup_conditions,
         
         is_admin_entry=True
     )
@@ -101,6 +108,8 @@ async def add_scrap_listing(
             "images_count": len(uploaded_image_urls)
         }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
         db.rollback()
         print(f"Upload Error: {str(e)}")
