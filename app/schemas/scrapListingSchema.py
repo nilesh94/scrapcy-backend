@@ -33,6 +33,7 @@ class ScrapListingBase(BaseModel):
     unit: str
     price_per_unit: float
     price_unit: str
+    monthly_capacity: Optional[str] = None
     
     # Location
     address: str                           # NEW
