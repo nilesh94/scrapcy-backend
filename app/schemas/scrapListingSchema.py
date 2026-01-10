@@ -2,25 +2,28 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 
-# --- HELPER SCHEMAS FOR NESTED RELATIONS ---
-# These are used to serialize the relationship objects (level 1, 2, 3)
+# --- HELPER SCHEMAS (FIXED: MATCH DB COLUMN NAMES) ---
 class CategoryOut(BaseModel):
     id: int
-    name: str
+    material_category: str 
+    # Optional: Include scrap_type if you need it in the nested object
+    scrap_type: Optional[str] = None
     
     class Config:
         from_attributes = True
 
 class MaterialOut(BaseModel):
     id: int
-    name: str
+    # WAS: name: str
+    material_name: str 
 
     class Config:
         from_attributes = True
 
 class GradeOut(BaseModel):
     id: int
-    name: str
+    # WAS: name: str
+    grade_name: str
 
     class Config:
         from_attributes = True
@@ -33,8 +36,6 @@ class ScrapImageBase(BaseModel):
 class ScrapImageResponse(ScrapImageBase):
     id: int
     scrap_listing_id: int
-    # Note: Ensure your DB model uses 'created_at' or 'uploaded_at' consistently.
-    # Based on previous context, SQLAlchemy usually defaults to created_at.
     created_at: Optional[datetime] = None 
 
     class Config:
@@ -50,14 +51,13 @@ class ScrapListingBase(BaseModel):
     phone: str
     alternate_phone: Optional[str] = None
     
-    # --- NEW ID FIELDS (Required by Oracle DB) ---
-    # These correspond to the foreign keys in your DB
+    # IDs
     category_id: int
     material_id: int
     grade_id: Optional[int] = None
 
-    # Legacy Fields (Kept for backward compatibility)
-    scrap_type: str            # You can eventually make this Optional or auto-fill it from category_id
+    # Legacy Fields
+    scrap_type: str            
     grade: Optional[str] = None 
     
     # Scrap Details
@@ -80,8 +80,7 @@ class ScrapListingResponse(ScrapListingBase):
     is_admin_entry: bool
     created_at: datetime
     
-    # --- NESTED RELATIONSHIP OBJECTS ---
-    # These allow the frontend to access names (e.g., item.category_ref.name)
+    # Nested Relationship Objects
     category_ref: Optional[CategoryOut] = None
     material_ref: Optional[MaterialOut] = None
     grade_ref: Optional[GradeOut] = None
