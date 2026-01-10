@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
 # Import for relationship mapping (optional, but good for clarity)
-# from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapGrade
+from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapGrade
 
 class ScrapListing(Base):
     __tablename__ = "scrap_listings"
