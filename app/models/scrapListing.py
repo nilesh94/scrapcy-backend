@@ -39,7 +39,7 @@ class ScrapListing(Base):
     pickup_conditions = Column(Text, nullable=True)
     
     is_admin_entry = Column(Boolean, default=False)
-    added_by = Column(String(50), default="user")
+    added_by = Column(String(50), default="admin")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
