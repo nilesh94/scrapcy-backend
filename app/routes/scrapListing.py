@@ -31,6 +31,7 @@ async def add_scrap_listing(
     description: Optional[str] = Form(None),
     quantity: float = Form(...),
     unit: str = Form(...),
+    monthly_capacity: Optional[str] = Form(None),
     price_per_unit: float = Form(...),
     price_unit: str = Form(...),
     
@@ -69,6 +70,7 @@ async def add_scrap_listing(
         description=description,
         quantity=quantity,
         unit=unit,
+        monthly_capacity=monthly_capacity,
         price_per_unit=price_per_unit,
         price_unit=price_unit,
         
