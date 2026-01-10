@@ -27,6 +27,8 @@ class ScrapListing(Base):
     
     price_per_unit = Column(Float, nullable=False)
     price_unit = Column(String(50), nullable=False)
+
+    monthly_capacity = Column(String, nullable=True)
     
     # --- Location & Pickup ---
     address = Column(String(500), nullable=False)       # NEW: Detailed Location
