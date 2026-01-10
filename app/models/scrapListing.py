@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
-# Import for relationship mapping (optional, but good for clarity)
+# Import for relationship mapping
 from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapGrade
 
 class ScrapListing(Base):
@@ -11,34 +11,35 @@ class ScrapListing(Base):
     id = Column(Integer, primary_key=True, index=True)
     
     # Seller Details
-    seller_name = Column(String, nullable=False)
-    company_name = Column(String, nullable=True)
-    gst_number = Column(String, nullable=True)
-    email = Column(String, nullable=False)
-    phone = Column(String, nullable=False)
-    alternate_phone = Column(String, nullable=True)
+    # Note: Added lengths (e.g. 255) which are required for Oracle VARCHAR2
+    seller_name = Column(String(255), nullable=False)
+    company_name = Column(String(255), nullable=True)
+    gst_number = Column(String(50), nullable=True)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(50), nullable=False)
+    alternate_phone = Column(String(50), nullable=True)
     
     # --- NEW ID COLUMNS (Levels 2, 3, 4) ---
     category_id = Column(Integer, ForeignKey("scrap_categories.id"), nullable=True)
     material_id = Column(Integer, ForeignKey("scrap_materials.id"), nullable=True)
     grade_id = Column(Integer, ForeignKey("scrap_grades.id"), nullable=True)
 
-    # Legacy Columns (We will still auto-fill these for backward compatibility)
-    scrap_type = Column(String, nullable=False)
-    grade = Column(String, nullable=True)
+    # Legacy Columns (Auto-filled for backward compatibility)
+    scrap_type = Column(String(100), nullable=False)
+    grade = Column(String(100), nullable=True)
     
     description = Column(Text, nullable=True)
     quantity = Column(Float, nullable=False)
-    unit = Column(String, nullable=False)
-    monthly_capacity = Column(String, nullable=True) 
+    unit = Column(String(50), nullable=False)
+    monthly_capacity = Column(String(100), nullable=True) 
     price_per_unit = Column(Float, nullable=False)
-    price_unit = Column(String, nullable=False)
+    price_unit = Column(String(50), nullable=False)
     
     address = Column(Text, nullable=False)
     pickup_conditions = Column(Text, nullable=True)
     
     is_admin_entry = Column(Boolean, default=False)
-    added_by = Column(String, default="user")
+    added_by = Column(String(50), default="user")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -51,11 +52,14 @@ class ScrapListing(Base):
 
 class ScrapImage(Base):
     __tablename__ = "scrap_images"
+    
     id = Column(Integer, primary_key=True, index=True)
     scrap_listing_id = Column(Integer, ForeignKey("scrap_listings.id"))
-    seller_email = Column(String)
-    image_url = Column(String)
-    drive_file_id = Column(String, nullable=True)
+    
+    seller_email = Column(String(255))
+    image_url = Column(Text) # Using Text for URLs to avoid length limits
+    drive_file_id = Column(String(255), nullable=True)
+    
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
