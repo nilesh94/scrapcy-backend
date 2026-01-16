@@ -9,12 +9,16 @@ from app.database.connection import engine, Base
 # (CRITICAL: Must be imported so Base.metadata knows they exist to create tables)
 from app.models import users as user_models
 from app.models import scrapListing as scrap_models
-from app.models import scrapCategories as category_models  # <--- NEW: Register Category Tables
+from app.models import scrapCategories as category_models
+from app.models import market_data as market_models # <--- NEW: Register Market/Location Tables
 
 # 3. Import Routers 
 from app.routes import users as user_routes
 from app.routes import scrapListing as scrap_routes
-from app.routes import scrapCategories as category_routes # <--- NEW: Import Category API
+from app.routes import scrapCategories as category_routes
+# --- NEW ROUTERS ---
+from app.routes import locations as location_routes
+from app.routes import market_prices as market_price_routes
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +31,7 @@ app = FastAPI(title="Scrapcy Backend")
 origins = [
     "http://localhost:3000",
     "https://scrapcy-frontend.onrender.com",
-    "https://scrapcy-admin.onrender.com", # Added Admin URL just in case
+    "https://scrapcy-admin.onrender.com",
     "https://scrapcy.nexusmeta.in",
     "*", 
 ]
@@ -53,7 +57,11 @@ except Exception as e:
 # This maps the routes defined in your files to the API
 app.include_router(user_routes.router)
 app.include_router(scrap_routes.router)
-app.include_router(category_routes.router) # <--- NEW: Activate Category API
+app.include_router(category_routes.router)
+
+# --- ACTIVATE NEW ROUTERS ---
+app.include_router(location_routes.router)
+app.include_router(market_price_routes.router)
 
 @app.get("/")
 def read_root():
