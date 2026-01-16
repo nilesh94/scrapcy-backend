@@ -2,7 +2,6 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
-# 1. Base Schema (Common fields)
 class LocationBase(BaseModel):
     location_name: str
     city: Optional[str] = None
@@ -12,17 +11,19 @@ class LocationBase(BaseModel):
     geographic_zone: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    
+    # --- ADDED NEW FIELDS ---
+    location_type: Optional[str] = None
+    state_gst_code: Optional[str] = None
+    search_aliases: Optional[str] = None
 
-# 2. Schema for Creating a Location (Input)
 class LocationCreate(LocationBase):
     pass
 
-# 3. Schema for Reading a Location (Output/Response)
 class LocationResponse(LocationBase):
     id: int
     is_active: int
-    # We include ID and Active status when sending data TO the frontend
+    created_at: Optional[datetime]
     
     class Config:
-        # This tells Pydantic to read data even if it's an ORM object (from Database)
         from_attributes = True
