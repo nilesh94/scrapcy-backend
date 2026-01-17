@@ -38,22 +38,23 @@ class SheetRow(BaseModel):
 def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     """
     Receives raw rows from Google Sheets.
-    Relies on DB Aliases (e.g., 'Mandi' -> 'Mandi Gobindgarh') and 
-    exact DB matches for Materials/Grades.
+    - Maps names to IDs using Aliases.
+    - PREVENTS DUPLICATES: Checks if (Location, Material, Grade, Time) exists.
+    - If exists -> Updates Price.
+    - If new -> Inserts.
     """
+    
+    # --- A. Pre-fetch Maps (Optimization) ---
     try:
         # 1. Build Location Map
         loc_map = {}
         all_locations = db.query(Location).all()
         for loc in all_locations:
-            if loc.location_name:
-                loc_map[loc.location_name.strip().lower()] = loc.id
-            if loc.city:
-                loc_map[loc.city.strip().lower()] = loc.id
+            if loc.location_name: loc_map[loc.location_name.strip().lower()] = loc.id
+            if loc.city: loc_map[loc.city.strip().lower()] = loc.id
             if loc.search_aliases:
                 aliases = [a.strip().lower() for a in loc.search_aliases.split(',') if a.strip()]
-                for alias in aliases:
-                    loc_map[alias] = loc.id
+                for alias in aliases: loc_map[alias] = loc.id
 
         # 2. Build Category/Material/Grade Maps
         cat_map = {c.material_category.strip().lower(): c.id for c in db.query(ScrapCategory).all()}
@@ -63,34 +64,41 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load reference data: {str(e)}")
 
-    new_entries = []
+    processed_count = 0
+    updated_count = 0
+    inserted_count = 0
     errors = []
 
+    # --- B. Loop through Rows ---
     for i, row in enumerate(rows):
         try:
+            # Normalize Inputs
             raw_loc = row.Location.strip().lower()
             raw_cat = row.CATEGORY.strip().lower()
             raw_mat = row.Material.strip().lower()
             raw_grade = row.Grade.strip().lower() if row.Grade else None
 
+            # Lookups
             loc_id = loc_map.get(raw_loc)
             cat_id = cat_map.get(raw_cat)
             mat_id = mat_map.get(raw_mat)
             grade_id = grade_map.get(raw_grade) if raw_grade else None
 
+            # Validation
             if not loc_id:
-                errors.append(f"Row {i+1}: Location '{row.Location}' not found in DB (Check Aliases).")
+                errors.append(f"Row {i+1}: Location '{row.Location}' not found.")
                 continue
             if not cat_id:
-                errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found in DB.")
+                errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found.")
                 continue
             if not mat_id:
-                errors.append(f"Row {i+1}: Material '{row.Material}' not found in DB.")
+                errors.append(f"Row {i+1}: Material '{row.Material}' not found.")
                 continue
             if raw_grade and not grade_id:
-                 errors.append(f"Row {i+1}: Grade '{row.Grade}' not found in DB.")
+                 errors.append(f"Row {i+1}: Grade '{row.Grade}' not found.")
                  continue
 
+            # Parse Timestamp
             dt_str = f"{row.Date} {row.Time_Slot}"
             try:
                 recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
@@ -100,31 +108,53 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                 except ValueError:
                     recorded_at = datetime.now()
 
-            new_entries.append(ScrapPriceHistory(
-                location_id=loc_id,
-                category_id=cat_id,
-                material_id=mat_id,
-                grade_id=grade_id,
-                price_per_mt=row.Price,         
-                currency=row.Currency,          
-                unit=row.PER_UNIT,              
-                recorded_at=recorded_at
-            ))
+            # --- C. DUPLICATE CHECK (The Fix) ---
+            # Check if record exists for this Location + Material + Grade + Time
+            existing_record = db.query(ScrapPriceHistory).filter(
+                ScrapPriceHistory.location_id == loc_id,
+                ScrapPriceHistory.material_id == mat_id,
+                ScrapPriceHistory.grade_id == grade_id,
+                ScrapPriceHistory.recorded_at == recorded_at
+            ).first()
+
+            if existing_record:
+                # UPDATE existing price
+                existing_record.price_per_mt = row.Price
+                existing_record.currency = row.Currency
+                existing_record.unit = row.PER_UNIT
+                updated_count += 1
+            else:
+                # INSERT new record
+                new_entry = ScrapPriceHistory(
+                    location_id=loc_id,
+                    category_id=cat_id,
+                    material_id=mat_id,
+                    grade_id=grade_id,
+                    price_per_mt=row.Price,
+                    currency=row.Currency,
+                    unit=row.PER_UNIT,
+                    recorded_at=recorded_at
+                )
+                db.add(new_entry)
+                inserted_count += 1
+            
+            processed_count += 1
 
         except Exception as e:
             errors.append(f"Row {i+1}: processing error - {str(e)}")
 
-    if new_entries:
-        try:
-            db.add_all(new_entries)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            return {"status": "error", "detail": f"Database Insert Failed: {str(e)}", "errors": errors}
+    # --- D. Commit Changes ---
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "detail": f"Database Commit Failed: {str(e)}", "errors": errors}
 
     return {
         "status": "success", 
-        "inserted": len(new_entries), 
+        "processed": processed_count,
+        "inserted": inserted_count,
+        "updated": updated_count,
         "failed_count": len(errors),
         "errors": errors
     }
