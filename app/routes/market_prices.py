@@ -18,6 +18,10 @@ router = APIRouter(
     tags=["Market Prices"]
 )
 
+# ==========================================
+# 0. PYDANTIC MODELS (Input Validation)
+# ==========================================
+
 class SheetRow(BaseModel):
     Date: str              
     Time_Slot: str = "00:00" 
@@ -172,6 +176,7 @@ def search_price(
 ):
     """
     Universal Search Logic with Robust Moving Average.
+    FIXED: Uses Distinct Material Query to avoid getting buried by duplicates.
     """
     
     if not location and not query_term:
@@ -217,74 +222,46 @@ def search_price(
             else:
                 return {"status": "error", "message": f"No material/category found for '{query_term}'"}
 
-    # --- C. Build Query filters ---
-    filters = []
+    # --- C. REVISED FETCH LOGIC (Fixes the "Hidden Data" Bug) ---
+    
+    # 1. Build Base Filters
+    base_filters = []
     if location_id:
-        filters.append(ScrapPriceHistory.location_id == location_id)
-    if target_material_id:
-        filters.append(ScrapPriceHistory.material_id == target_material_id)
-    elif target_category_id:
-        filters.append(ScrapPriceHistory.category_id == target_category_id)
-
-    raw_history = db.query(ScrapPriceHistory).filter(*filters)\
-        .order_by(ScrapPriceHistory.recorded_at.desc())\
-        .limit(200).all()
-
-    if not raw_history:
-        return {"status": "no_data", "message": "No pricing data found."}
-
-    # --- D. Find Latest Entry per Unique (Location + Material) ---
-    latest_map = {} 
-    for record in raw_history:
-        key = f"{record.location_id}-{record.material_id}"
-        if key not in latest_map:
-            latest_map[key] = record
-
+        base_filters.append(ScrapPriceHistory.location_id == location_id)
+    if target_category_id:
+        base_filters.append(ScrapPriceHistory.category_id == target_category_id)
+    
     results = []
 
-    # --- E. Calculate Stats & Format ---
-    for key, record in latest_map.items():
-        loc_name = db.query(Location).get(record.location_id).location_name
-        mat_name = db.query(ScrapMaterial).get(record.material_id).material_name
-        grade_name = record.grade.grade_name if record.grade else "General"
+    # Scenario 1: Specific Material Requested (Fastest)
+    if target_material_id:
+        filters = base_filters + [ScrapPriceHistory.material_id == target_material_id]
+        latest_record = db.query(ScrapPriceHistory).filter(*filters)\
+            .order_by(ScrapPriceHistory.recorded_at.desc()).first()
+        if latest_record:
+            process_record(latest_record, db, results)
 
-        # -----------------------------------------------------------
-        # ROBUST 5-DAY MOVING AVERAGE LOGIC
-        # -----------------------------------------------------------
-        # If data exists for 5 days, it averages 5 days.
-        # If data exists for only 3 days (e.g. Mon, Wed, Fri), it averages those 3.
-        # It automatically handles missing days without returning 0.
-        # -----------------------------------------------------------
-        end_date = record.recorded_at
-        start_date = end_date - timedelta(days=5)
-        
-        avg_price = db.query(func.avg(ScrapPriceHistory.price_per_mt)).filter(
-            ScrapPriceHistory.location_id == record.location_id,
-            ScrapPriceHistory.material_id == record.material_id,
-            ScrapPriceHistory.recorded_at >= start_date,
-            ScrapPriceHistory.recorded_at <= end_date
-        ).scalar()
-        
-        avg_price_val = round(avg_price, 2) if avg_price else record.price_per_mt
-        
-        if record.price_per_mt > avg_price_val:
-            trend = "HIGHER"
-        elif record.price_per_mt < avg_price_val:
-            trend = "LOWER"
-        else:
-            trend = "STABLE"
+    # Scenario 2: Category or Location Dump (The "Loop" Strategy)
+    else:
+        # Step 1: Find which materials actually have data in this scope
+        # We query just the IDs first to be efficient
+        distinct_materials = db.query(ScrapPriceHistory.material_id)\
+            .filter(*base_filters)\
+            .distinct().all()
+            
+        if not distinct_materials:
+             return {"status": "no_data", "message": "No pricing data found."}
 
-        results.append({
-            "location": loc_name,
-            "material": mat_name,
-            "grade": grade_name,
-            "price": record.price_per_mt,
-            "unit": record.unit,
-            "currency": record.currency,
-            "date": record.recorded_at.strftime("%Y-%m-%d"),
-            "avg_5d": avg_price_val,
-            "trend_indicator": trend
-        })
+        # Step 2: Loop through each unique material and get its LATEST price
+        # This guarantees we see 'Re-Rolling' even if 'HMS' has 1000 duplicates.
+        for (mat_id,) in distinct_materials:
+            latest_record = db.query(ScrapPriceHistory).filter(
+                ScrapPriceHistory.location_id == location_id if location_id else True,
+                ScrapPriceHistory.material_id == mat_id
+            ).order_by(ScrapPriceHistory.recorded_at.desc()).first()
+            
+            if latest_record:
+                process_record(latest_record, db, results)
 
     return {
         "status": "success",
@@ -292,6 +269,47 @@ def search_price(
         "count": len(results),
         "data": results
     }
+
+# --- Helper Function for Processing Records ---
+def process_record(record, db, results_list):
+    """
+    Helper to calculate 5-day average and format output.
+    """
+    loc_name = db.query(Location).get(record.location_id).location_name
+    mat_name = db.query(ScrapMaterial).get(record.material_id).material_name
+    grade_name = record.grade.grade_name if record.grade else "General"
+
+    # 5-Day Avg Logic
+    end_date = record.recorded_at
+    start_date = end_date - timedelta(days=5)
+    
+    avg_price = db.query(func.avg(ScrapPriceHistory.price_per_mt)).filter(
+        ScrapPriceHistory.location_id == record.location_id,
+        ScrapPriceHistory.material_id == record.material_id,
+        ScrapPriceHistory.recorded_at >= start_date,
+        ScrapPriceHistory.recorded_at <= end_date
+    ).scalar()
+    
+    avg_price_val = round(avg_price, 2) if avg_price else record.price_per_mt
+    
+    if record.price_per_mt > avg_price_val:
+        trend = "HIGHER"
+    elif record.price_per_mt < avg_price_val:
+        trend = "LOWER"
+    else:
+        trend = "STABLE"
+
+    results_list.append({
+        "location": loc_name,
+        "material": mat_name,
+        "grade": grade_name,
+        "price": record.price_per_mt,
+        "unit": record.unit,
+        "currency": record.currency,
+        "date": record.recorded_at.strftime("%Y-%m-%d"),
+        "avg_5d": avg_price_val,
+        "trend_indicator": trend
+    })
 
 # ==========================================
 # 3. ADMIN ENDPOINTS
