@@ -18,10 +18,6 @@ router = APIRouter(
     tags=["Market Prices"]
 )
 
-# ==========================================
-# 1. GOOGLE SHEET SYNC (Bulk Upload)
-# ==========================================
-
 class SheetRow(BaseModel):
     Date: str              
     Time_Slot: str = "00:00" 
@@ -34,13 +30,17 @@ class SheetRow(BaseModel):
     Currency: str = "INR"  
     PER_UNIT: str = "MT"   
 
+# ==========================================
+# 1. GOOGLE SHEET SYNC (With Duplicate Prevention)
+# ==========================================
+
 @router.post("/bulk-sheet-sync")
 def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     """
     Receives raw rows from Google Sheets.
     - Maps names to IDs using Aliases.
     - PREVENTS DUPLICATES: Checks if (Location, Material, Grade, Time) exists.
-    - If exists -> Updates Price.
+    - If exists -> Updates Price (Upsert).
     - If new -> Inserts.
     """
     
@@ -86,16 +86,16 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
 
             # Validation
             if not loc_id:
-                errors.append(f"Row {i+1}: Location '{row.Location}' not found.")
+                errors.append(f"Row {i+1}: Location '{row.Location}' not found in DB.")
                 continue
             if not cat_id:
-                errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found.")
+                errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found in DB.")
                 continue
             if not mat_id:
-                errors.append(f"Row {i+1}: Material '{row.Material}' not found.")
+                errors.append(f"Row {i+1}: Material '{row.Material}' not found in DB.")
                 continue
             if raw_grade and not grade_id:
-                 errors.append(f"Row {i+1}: Grade '{row.Grade}' not found.")
+                 errors.append(f"Row {i+1}: Grade '{row.Grade}' not found in DB.")
                  continue
 
             # Parse Timestamp
@@ -108,8 +108,8 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                 except ValueError:
                     recorded_at = datetime.now()
 
-            # --- C. DUPLICATE CHECK (The Fix) ---
-            # Check if record exists for this Location + Material + Grade + Time
+            # --- C. UPSERT LOGIC (The Fix) ---
+            # Check if this exact price record already exists
             existing_record = db.query(ScrapPriceHistory).filter(
                 ScrapPriceHistory.location_id == loc_id,
                 ScrapPriceHistory.material_id == mat_id,
@@ -118,7 +118,7 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
             ).first()
 
             if existing_record:
-                # UPDATE existing price
+                # UPDATE existing record (No Duplicate)
                 existing_record.price_per_mt = row.Price
                 existing_record.currency = row.Currency
                 existing_record.unit = row.PER_UNIT
