@@ -18,10 +18,10 @@ router = APIRouter(
     tags=["Market Prices"]
 )
 
-# --- 1. NEW: Schema for Google Sheet Rows ---
+# --- 1. Schema for Google Sheet Rows ---
 class SheetRow(BaseModel):
     DATE: str
-    TIME: str
+    TIME: str = "00:00" # Default to midnight if missing
     SCRAP_TYPE: str
     CATEGORY: str
     MATERIAL: str
@@ -31,27 +31,45 @@ class SheetRow(BaseModel):
     CURRENCY: str = "INR" # Default if column missing
     PER_UNIT: str = "MT"  # Default if column missing
 
-# --- 2. NEW: Bulk Sync Endpoint ---
+# --- 2. Bulk Sync Endpoint (Updated with Alias Support) ---
 @router.post("/bulk-sheet-sync")
 def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     """
     Receives raw rows from Google Sheets, maps names to IDs, and inserts into DB.
     Handles multiple tabs sent as one big list.
+    Checks SEARCH_ALIASES for location matching.
     """
-    # A. Pre-fetch Maps (Optimization to avoid 1000 DB calls)
-    # We convert DB names to lowercase for case-insensitive matching
+    
+    # --- A. Pre-fetch Maps (Optimization) ---
     try:
-        loc_map = {l.location_name.strip().lower(): l.id for l in db.query(Location).all()}
+        # 1. Build Location Map (Name + Aliases)
+        loc_map = {}
+        all_locations = db.query(Location).all()
+        
+        for loc in all_locations:
+            # Map Primary Name (e.g. "mandi gobindgarh" -> 55)
+            primary_name = loc.location_name.strip().lower()
+            loc_map[primary_name] = loc.id
+            
+            # Map Aliases (e.g. "mandi" -> 55)
+            if loc.search_aliases:
+                # Split by comma, strip spaces, lowercase
+                aliases = [a.strip().lower() for a in loc.search_aliases.split(',') if a.strip()]
+                for alias in aliases:
+                    loc_map[alias] = loc.id
+
+        # 2. Build Maps for Categories, Materials, Grades
         cat_map = {c.material_category.strip().lower(): c.id for c in db.query(ScrapCategory).all()}
         mat_map = {m.material_name.strip().lower(): m.id for m in db.query(ScrapMaterial).all()}
         grade_map = {g.grade_name.strip().lower(): g.id for g in db.query(ScrapGrade).all()}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load reference data: {str(e)}")
 
     new_entries = []
     errors = []
 
-    # B. Loop through Incoming Rows
+    # --- B. Loop through Incoming Rows ---
     for i, row in enumerate(rows):
         try:
             # Normalize Inputs (trim and lowercase)
@@ -60,21 +78,15 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
             mat_name = row.MATERIAL.strip().lower()
             grade_name = row.GRADE.strip().lower() if row.GRADE else None
 
-            # Get IDs from Maps
+            # Lookups (loc_map now checks Aliases too!)
             loc_id = loc_map.get(loc_name)
             cat_id = cat_map.get(cat_name)
             mat_id = mat_map.get(mat_name)
-            
-            # Grade is optional in DB, so if not found in map, check if it was provided
-            grade_id = None
-            if grade_name:
-                grade_id = grade_map.get(grade_name)
-                # If grade provided but not found, you might want to log it or skip. 
-                # For now, we proceed with None or log error if strict.
+            grade_id = grade_map.get(grade_name) if grade_name else None
 
             # Validation: Critical IDs must exist
             if not loc_id:
-                errors.append(f"Row {i+1}: Location '{row.LOCATION}' not found in DB.")
+                errors.append(f"Row {i+1}: Location '{row.LOCATION}' not found (checked aliases too).")
                 continue
             if not cat_id:
                 errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found in DB.")
@@ -84,10 +96,9 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                 continue
 
             # Parse Timestamp (Date + Time columns)
-            # Incoming: "2026-01-17" and "14:00:00" or "14:00"
             dt_str = f"{row.DATE} {row.TIME}"
             try:
-                # Try standard format
+                # Try standard format YYYY-MM-DD HH:MM
                 recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
             except ValueError:
                 try:
@@ -104,15 +115,15 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                 material_id=mat_id,
                 grade_id=grade_id,
                 price_per_mt=row.PRICE,
-                currency=row.CURRENCY,
-                unit=row.PER_UNIT,
+                currency=row.CURRENCY, # Saved to DB
+                unit=row.PER_UNIT,     # Saved to DB
                 recorded_at=recorded_at
             ))
 
         except Exception as e:
             errors.append(f"Row {i+1}: processing error - {str(e)}")
 
-    # C. Bulk Insert
+    # --- C. Bulk Insert ---
     if new_entries:
         try:
             db.add_all(new_entries)
