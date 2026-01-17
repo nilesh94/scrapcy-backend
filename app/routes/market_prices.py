@@ -18,20 +18,20 @@ router = APIRouter(
     tags=["Market Prices"]
 )
 
-# --- 1. Schema for Google Sheet Rows ---
+# --- 1. UPDATED Schema (Matches Your Google Sheet Headers Exactly) ---
 class SheetRow(BaseModel):
-    DATE: str
-    TIME: str = "00:00" # Default to midnight if missing
-    SCRAP_TYPE: str
-    CATEGORY: str
-    MATERIAL: str
-    GRADE: Optional[str] = None
-    LOCATION: str
-    PRICE: float
-    CURRENCY: str = "INR" # Default if column missing
-    PER_UNIT: str = "MT"  # Default if column missing
+    Date: str              # Matches sheet header "Date"
+    Time_Slot: str = "00:00" # Matches sheet header "Time_Slot"
+    SCRAP_TYPE: str        # Matches sheet header "SCRAP_TYPE"
+    CATEGORY: str          # Matches sheet header "CATEGORY"
+    Material: str          # Matches sheet header "Material"
+    Grade: Optional[str] = None # Matches sheet header "Grade"
+    Location: str          # Matches sheet header "Location"
+    Price: float           # Matches sheet header "Price"
+    Currency: str = "INR"  # Matches sheet header "Currency"
+    PER_UNIT: str = "MT"   # Matches sheet header "PER_UNIT"
 
-# --- 2. Bulk Sync Endpoint (Updated with Alias Support) ---
+# --- 2. Bulk Sync Endpoint (With Alias Support) ---
 @router.post("/bulk-sheet-sync")
 def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     """
@@ -72,11 +72,11 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     # --- B. Loop through Incoming Rows ---
     for i, row in enumerate(rows):
         try:
-            # Normalize Inputs (trim and lowercase)
-            loc_name = row.LOCATION.strip().lower()
-            cat_name = row.CATEGORY.strip().lower()
-            mat_name = row.MATERIAL.strip().lower()
-            grade_name = row.GRADE.strip().lower() if row.GRADE else None
+            # Normalize Inputs (Using NEW Variable Names)
+            loc_name = row.Location.strip().lower()     # Changed to .Location
+            cat_name = row.CATEGORY.strip().lower()     # Kept .CATEGORY
+            mat_name = row.Material.strip().lower()     # Changed to .Material
+            grade_name = row.Grade.strip().lower() if row.Grade else None # Changed to .Grade
 
             # Lookups (loc_map now checks Aliases too!)
             loc_id = loc_map.get(loc_name)
@@ -86,17 +86,17 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
 
             # Validation: Critical IDs must exist
             if not loc_id:
-                errors.append(f"Row {i+1}: Location '{row.LOCATION}' not found (checked aliases too).")
+                errors.append(f"Row {i+1}: Location '{row.Location}' not found (checked aliases too).")
                 continue
             if not cat_id:
                 errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found in DB.")
                 continue
             if not mat_id:
-                errors.append(f"Row {i+1}: Material '{row.MATERIAL}' not found in DB.")
+                errors.append(f"Row {i+1}: Material '{row.Material}' not found in DB.")
                 continue
 
-            # Parse Timestamp (Date + Time columns)
-            dt_str = f"{row.DATE} {row.TIME}"
+            # Parse Timestamp (Using .Date and .Time_Slot)
+            dt_str = f"{row.Date} {row.Time_Slot}"
             try:
                 # Try standard format YYYY-MM-DD HH:MM
                 recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
@@ -114,9 +114,9 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                 category_id=cat_id,
                 material_id=mat_id,
                 grade_id=grade_id,
-                price_per_mt=row.PRICE,
-                currency=row.CURRENCY, # Saved to DB
-                unit=row.PER_UNIT,     # Saved to DB
+                price_per_mt=row.Price,         # Changed to .Price
+                currency=row.Currency,          # Changed to .Currency
+                unit=row.PER_UNIT,              # Kept .PER_UNIT
                 recorded_at=recorded_at
             ))
 
