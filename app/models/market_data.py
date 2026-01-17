@@ -45,6 +45,8 @@ class ScrapPriceHistory(Base):
     location_id = Column("LOCATION_ID", Integer, ForeignKey("LOCATIONS.ID"), nullable=False)
     
     price_per_mt = Column("PRICE_PER_MT", Float, nullable=False)
+    currency = Column("CURRENCY", String(10), default="INR")
+    unit = Column("UNIT", String(20), default="MT")
     
     # Matching TIMESTAMP(6)
     recorded_at = Column("RECORDED_AT", DateTime(timezone=True), server_default=func.now(), nullable=False)
