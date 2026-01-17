@@ -30,7 +30,7 @@ class SheetRow(BaseModel):
     Material: str          
     Grade: Optional[str] = None 
     Location: str          
-    Price: Optinal[float] = None           
+    Price: Optional[float] = None           
     Currency: str = "INR"  
     PER_UNIT: str = "MT"   
 
