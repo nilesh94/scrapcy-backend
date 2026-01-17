@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+# Updated imports for validation
+from pydantic import BaseModel, field_validator
 
 # Import Database and Models
 from app.database.connection import get_db
@@ -30,9 +31,34 @@ class SheetRow(BaseModel):
     Material: str          
     Grade: Optional[str] = None 
     Location: str          
-    Price: Optional[float] = None           
+    
+    # Allow float OR None. 
+    Price: Optional[Union[float, None]] = None           
+    
     Currency: str = "INR"  
     PER_UNIT: str = "MT"   
+
+    # --- VALIDATOR: FIX THE "STRING AS NUMBER" ERROR ---
+    @field_validator('Price', mode='before')
+    @classmethod
+    def parse_price(cls, v):
+        # 1. Handle actual Nulls
+        if v is None:
+            return None
+        
+        # 2. Handle Strings (Empty or Numbers in quotes)
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:  # Empty string "" becomes None
+                return None
+            try:
+                # Clean commas just in case ("35,000" -> 35000.0)
+                return float(v.replace(',', ''))
+            except ValueError:
+                # If it's garbage text, treat as None so we skip it
+                return None
+                
+        return v
 
 # ==========================================
 # 1. GOOGLE SHEET SYNC (With Duplicate Prevention)
@@ -77,10 +103,11 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     # --- B. Loop through Rows ---
     for i, row in enumerate(rows):
         try:
-            #--Skipping row when price is null
-            if(row.Price is None):
+            # -- Skipping row when price is null (Handled by validator above)
+            if row.Price is None:
                 skipped_row_count += 1
                 continue
+
             # Normalize Inputs
             raw_loc = row.Location.strip().lower()
             raw_cat = row.CATEGORY.strip().lower()
@@ -117,7 +144,7 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                 except ValueError:
                     recorded_at = datetime.now()
 
-            # --- C. UPSERT LOGIC (The Fix) ---
+            # --- C. UPSERT LOGIC ---
             # Check if this exact price record already exists
             existing_record = db.query(ScrapPriceHistory).filter(
                 ScrapPriceHistory.location_id == loc_id,
