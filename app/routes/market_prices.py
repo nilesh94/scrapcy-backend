@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 # Import Database and Models
@@ -18,47 +18,44 @@ router = APIRouter(
     tags=["Market Prices"]
 )
 
-# --- 1. UPDATED Schema (Matches Your Google Sheet Headers Exactly) ---
-class SheetRow(BaseModel):
-    Date: str              # Matches sheet header "Date"
-    Time_Slot: str = "00:00" # Matches sheet header "Time_Slot"
-    SCRAP_TYPE: str        # Matches sheet header "SCRAP_TYPE"
-    CATEGORY: str          # Matches sheet header "CATEGORY"
-    Material: str          # Matches sheet header "Material"
-    Grade: Optional[str] = None # Matches sheet header "Grade"
-    Location: str          # Matches sheet header "Location"
-    Price: float           # Matches sheet header "Price"
-    Currency: str = "INR"  # Matches sheet header "Currency"
-    PER_UNIT: str = "MT"   # Matches sheet header "PER_UNIT"
+# ==========================================
+# 1. GOOGLE SHEET SYNC (Bulk Upload)
+# ==========================================
 
-# --- 2. Bulk Sync Endpoint (With Alias Support) ---
+class SheetRow(BaseModel):
+    Date: str              
+    Time_Slot: str = "00:00" 
+    SCRAP_TYPE: str        
+    CATEGORY: str          
+    Material: str          
+    Grade: Optional[str] = None 
+    Location: str          
+    Price: float           
+    Currency: str = "INR"  
+    PER_UNIT: str = "MT"   
+
 @router.post("/bulk-sheet-sync")
 def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     """
-    Receives raw rows from Google Sheets, maps names to IDs, and inserts into DB.
-    Handles multiple tabs sent as one big list.
-    Checks SEARCH_ALIASES for location matching.
+    Receives raw rows from Google Sheets.
+    Relies on DB Aliases (e.g., 'Mandi' -> 'Mandi Gobindgarh') and 
+    exact DB matches for Materials/Grades.
     """
-    
-    # --- A. Pre-fetch Maps (Optimization) ---
     try:
-        # 1. Build Location Map (Name + Aliases)
+        # 1. Build Location Map
         loc_map = {}
         all_locations = db.query(Location).all()
-        
         for loc in all_locations:
-            # Map Primary Name (e.g. "mandi gobindgarh" -> 55)
-            primary_name = loc.location_name.strip().lower()
-            loc_map[primary_name] = loc.id
-            
-            # Map Aliases (e.g. "mandi" -> 55)
+            if loc.location_name:
+                loc_map[loc.location_name.strip().lower()] = loc.id
+            if loc.city:
+                loc_map[loc.city.strip().lower()] = loc.id
             if loc.search_aliases:
-                # Split by comma, strip spaces, lowercase
                 aliases = [a.strip().lower() for a in loc.search_aliases.split(',') if a.strip()]
                 for alias in aliases:
                     loc_map[alias] = loc.id
 
-        # 2. Build Maps for Categories, Materials, Grades
+        # 2. Build Category/Material/Grade Maps
         cat_map = {c.material_category.strip().lower(): c.id for c in db.query(ScrapCategory).all()}
         mat_map = {m.material_name.strip().lower(): m.id for m in db.query(ScrapMaterial).all()}
         grade_map = {g.grade_name.strip().lower(): g.id for g in db.query(ScrapGrade).all()}
@@ -69,24 +66,20 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     new_entries = []
     errors = []
 
-    # --- B. Loop through Incoming Rows ---
     for i, row in enumerate(rows):
         try:
-            # Normalize Inputs (Using NEW Variable Names)
-            loc_name = row.Location.strip().lower()     # Changed to .Location
-            cat_name = row.CATEGORY.strip().lower()     # Kept .CATEGORY
-            mat_name = row.Material.strip().lower()     # Changed to .Material
-            grade_name = row.Grade.strip().lower() if row.Grade else None # Changed to .Grade
+            raw_loc = row.Location.strip().lower()
+            raw_cat = row.CATEGORY.strip().lower()
+            raw_mat = row.Material.strip().lower()
+            raw_grade = row.Grade.strip().lower() if row.Grade else None
 
-            # Lookups (loc_map now checks Aliases too!)
-            loc_id = loc_map.get(loc_name)
-            cat_id = cat_map.get(cat_name)
-            mat_id = mat_map.get(mat_name)
-            grade_id = grade_map.get(grade_name) if grade_name else None
+            loc_id = loc_map.get(raw_loc)
+            cat_id = cat_map.get(raw_cat)
+            mat_id = mat_map.get(raw_mat)
+            grade_id = grade_map.get(raw_grade) if raw_grade else None
 
-            # Validation: Critical IDs must exist
             if not loc_id:
-                errors.append(f"Row {i+1}: Location '{row.Location}' not found (checked aliases too).")
+                errors.append(f"Row {i+1}: Location '{row.Location}' not found in DB (Check Aliases).")
                 continue
             if not cat_id:
                 errors.append(f"Row {i+1}: Category '{row.CATEGORY}' not found in DB.")
@@ -94,36 +87,33 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
             if not mat_id:
                 errors.append(f"Row {i+1}: Material '{row.Material}' not found in DB.")
                 continue
+            if raw_grade and not grade_id:
+                 errors.append(f"Row {i+1}: Grade '{row.Grade}' not found in DB.")
+                 continue
 
-            # Parse Timestamp (Using .Date and .Time_Slot)
             dt_str = f"{row.Date} {row.Time_Slot}"
             try:
-                # Try standard format YYYY-MM-DD HH:MM
                 recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
             except ValueError:
                 try:
-                    # Try with seconds if Excel adds them
                     recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
                 except ValueError:
-                    # Fallback to now if format is totally broken
                     recorded_at = datetime.now()
 
-            # Create Record Object
             new_entries.append(ScrapPriceHistory(
                 location_id=loc_id,
                 category_id=cat_id,
                 material_id=mat_id,
                 grade_id=grade_id,
-                price_per_mt=row.Price,         # Changed to .Price
-                currency=row.Currency,          # Changed to .Currency
-                unit=row.PER_UNIT,              # Kept .PER_UNIT
+                price_per_mt=row.Price,         
+                currency=row.Currency,          
+                unit=row.PER_UNIT,              
                 recorded_at=recorded_at
             ))
 
         except Exception as e:
             errors.append(f"Row {i+1}: processing error - {str(e)}")
 
-    # --- C. Bulk Insert ---
     if new_entries:
         try:
             db.add_all(new_entries)
@@ -139,74 +129,48 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
         "errors": errors
     }
 
-# --- 3. EXISTING: Single Add Endpoint (Used by Admin UI) ---
-@router.post("/add", response_model=MarketPriceResponse)
-def add_market_price(price_data: MarketPriceCreate, db: Session = Depends(get_db)):
-    """
-    Record a new market price entry into SCRAP_PRICES_HISTORY.
-    """
-    # 1. Create Model Instance
-    new_price = ScrapPriceHistory(
-        category_id=price_data.category_id,
-        material_id=price_data.material_id,
-        grade_id=price_data.grade_id,
-        location_id=price_data.location_id,
-        price_per_mt=price_data.price_per_mt,
-        # Use provided date or default to NOW()
-        recorded_at=price_data.recorded_at if price_data.recorded_at else func.now()
-    )
-    
-    try:
-        db.add(new_price)
-        db.commit()
-        db.refresh(new_price)
-        return new_price
-    except Exception as e:
-        db.rollback()
-        print(f"Error adding price: {str(e)}") # Debugging log
-        raise HTTPException(status_code=500, detail="Failed to save market price.")
 
-# --- 4. EXISTING: History Endpoint ---
-@router.get("/history", response_model=List[MarketPriceResponse])
-def get_price_history(limit: int = 50, db: Session = Depends(get_db)):
-    """
-    Fetch latest prices (Optional for Admin View)
-    """
-    prices = db.query(ScrapPriceHistory).order_by(ScrapPriceHistory.recorded_at.desc()).limit(limit).all()
-    return prices
+# ==========================================
+# 2. UNIVERSAL SEARCH (For AI/WhatsApp)
+# ==========================================
 
 @router.get("/search")
 def search_price(
-    location: str,
-    query_term: Optional[str] = None, # Can be Material Name OR Category Name OR None
+    location: Optional[str] = None,
+    query_term: Optional[str] = None, # Material OR Category
     db: Session = Depends(get_db)
 ):
     """
-    Universal Search:
-    - If 'query_term' matches a MATERIAL -> Returns price for that material.
-    - If 'query_term' matches a CATEGORY -> Returns prices for ALL materials in that category.
-    - If 'query_term' is EMPTY -> Returns ALL prices for the location.
+    Universal Search Logic with Robust Moving Average.
     """
     
-    # 1. RESOLVE LOCATION
-    loc_search = location.strip().lower()
-    location_obj = db.query(Location).filter(
-        (func.lower(Location.location_name) == loc_search) |
-        (func.lower(Location.city) == loc_search) |
-        (func.lower(Location.search_aliases).like(f"%{loc_search}%"))
-    ).first()
+    if not location and not query_term:
+        return {"status": "error", "message": "Please provide a location or a material name."}
 
-    if not location_obj:
-        return {"status": "error", "message": f"Location '{location}' not found."}
+    # --- A. Resolve Location (Optional) ---
+    location_id = None
+    location_name_display = "All Locations"
 
-    # 2. DETERMINE SCOPE (Material vs. Category vs. All)
+    if location:
+        loc_search = location.strip().lower()
+        location_obj = db.query(Location).filter(
+            (func.lower(Location.location_name) == loc_search) |
+            (func.lower(Location.city) == loc_search) |
+            (func.lower(Location.search_aliases).like(f"%{loc_search}%"))
+        ).first()
+
+        if location_obj:
+            location_id = location_obj.id
+            location_name_display = location_obj.location_name
+        else:
+            return {"status": "error", "message": f"Location '{location}' not found."}
+
+    # --- B. Resolve Material / Category (Optional) ---
     target_material_id = None
     target_category_id = None
     
     if query_term:
         term = query_term.strip().lower()
-        
-        # A) Check if it's a MATERIAL (e.g., "HMS Scrap")
         mat_obj = db.query(ScrapMaterial).filter(
             (func.lower(ScrapMaterial.material_name) == term) | 
             (func.lower(ScrapMaterial.material_name).like(f"%{term}%"))
@@ -215,74 +179,114 @@ def search_price(
         if mat_obj:
             target_material_id = mat_obj.id
         else:
-            # B) Check if it's a CATEGORY (e.g., "Ferrous")
             cat_obj = db.query(ScrapCategory).filter(
                 func.lower(ScrapCategory.material_category) == term
             ).first()
             if cat_obj:
                 target_category_id = cat_obj.id
             else:
-                return {"status": "error", "message": f"Could not find material or category matching '{query_term}'"}
+                return {"status": "error", "message": f"No material/category found for '{query_term}'"}
 
-    # 3. FETCH PRICES (The "Latest per Material" Logic)
-    # We need to fetch the latest price for *each* material relevant to the query.
-    
-    # Base Filter
-    filters = [ScrapPriceHistory.location_id == location_obj.id]
-    
+    # --- C. Build Query filters ---
+    filters = []
+    if location_id:
+        filters.append(ScrapPriceHistory.location_id == location_id)
     if target_material_id:
         filters.append(ScrapPriceHistory.material_id == target_material_id)
     elif target_category_id:
         filters.append(ScrapPriceHistory.category_id == target_category_id)
-        
-    # Get all records matching criteria, ordered by date desc
-    # (In a real production app, you'd use a subquery to get distinct materials, 
-    # but for simplicity, we fetch recent rows and deduce latest in Python)
+
     raw_history = db.query(ScrapPriceHistory).filter(*filters)\
-        .order_by(ScrapPriceHistory.material_id, ScrapPriceHistory.recorded_at.desc())\
-        .limit(100).all() # Safety limit
+        .order_by(ScrapPriceHistory.recorded_at.desc())\
+        .limit(200).all()
 
     if not raw_history:
-        return {"status": "no_data", "message": f"No data found for {location_obj.location_name}"}
+        return {"status": "no_data", "message": "No pricing data found."}
 
-    # 4. GROUP BY MATERIAL (Find latest for each)
-    latest_map = {} # Key: MaterialID -> Record
+    # --- D. Find Latest Entry per Unique (Location + Material) ---
+    latest_map = {} 
     for record in raw_history:
-        if record.material_id not in latest_map:
-            latest_map[record.material_id] = record
-    
+        key = f"{record.location_id}-{record.material_id}"
+        if key not in latest_map:
+            latest_map[key] = record
+
     results = []
-    
-    # 5. CALCULATE MOVING AVERAGE FOR EACH RESULT
-    for mat_id, record in latest_map.items():
-        # 5-Day Avg Logic
+
+    # --- E. Calculate Stats & Format ---
+    for key, record in latest_map.items():
+        loc_name = db.query(Location).get(record.location_id).location_name
+        mat_name = db.query(ScrapMaterial).get(record.material_id).material_name
+        grade_name = record.grade.grade_name if record.grade else "General"
+
+        # -----------------------------------------------------------
+        # ROBUST 5-DAY MOVING AVERAGE LOGIC
+        # -----------------------------------------------------------
+        # If data exists for 5 days, it averages 5 days.
+        # If data exists for only 3 days (e.g. Mon, Wed, Fri), it averages those 3.
+        # It automatically handles missing days without returning 0.
+        # -----------------------------------------------------------
         end_date = record.recorded_at
         start_date = end_date - timedelta(days=5)
         
         avg_price = db.query(func.avg(ScrapPriceHistory.price_per_mt)).filter(
-            ScrapPriceHistory.location_id == location_obj.id,
-            ScrapPriceHistory.material_id == mat_id,
+            ScrapPriceHistory.location_id == record.location_id,
+            ScrapPriceHistory.material_id == record.material_id,
             ScrapPriceHistory.recorded_at >= start_date,
             ScrapPriceHistory.recorded_at <= end_date
         ).scalar()
         
-        # Resolve Names
-        mat_name = db.query(ScrapMaterial).get(mat_id).material_name
-        grade_name = record.grade.grade_name if record.grade else "General"
+        avg_price_val = round(avg_price, 2) if avg_price else record.price_per_mt
+        
+        if record.price_per_mt > avg_price_val:
+            trend = "HIGHER"
+        elif record.price_per_mt < avg_price_val:
+            trend = "LOWER"
+        else:
+            trend = "STABLE"
 
         results.append({
+            "location": loc_name,
             "material": mat_name,
             "grade": grade_name,
             "price": record.price_per_mt,
             "unit": record.unit,
+            "currency": record.currency,
             "date": record.recorded_at.strftime("%Y-%m-%d"),
-            "avg_5d": round(avg_price, 2) if avg_price else record.price_per_mt,
-            "trend": "UP" if record.price_per_mt > (avg_price or 0) else "DOWN"
+            "avg_5d": avg_price_val,
+            "trend_indicator": trend
         })
 
     return {
         "status": "success",
-        "location": location_obj.location_name,
+        "search_context": location_name_display,
         "count": len(results),
         "data": results
     }
+
+# ==========================================
+# 3. ADMIN ENDPOINTS
+# ==========================================
+
+@router.post("/add", response_model=MarketPriceResponse)
+def add_market_price(price_data: MarketPriceCreate, db: Session = Depends(get_db)):
+    new_price = ScrapPriceHistory(
+        category_id=price_data.category_id,
+        material_id=price_data.material_id,
+        grade_id=price_data.grade_id,
+        location_id=price_data.location_id,
+        price_per_mt=price_data.price_per_mt,
+        recorded_at=price_data.recorded_at if price_data.recorded_at else func.now()
+    )
+    try:
+        db.add(new_price)
+        db.commit()
+        db.refresh(new_price)
+        return new_price
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to save market price.")
+
+@router.get("/history", response_model=List[MarketPriceResponse])
+def get_price_history(limit: int = 50, db: Session = Depends(get_db)):
+    prices = db.query(ScrapPriceHistory).order_by(ScrapPriceHistory.recorded_at.desc()).limit(limit).all()
+    return prices
