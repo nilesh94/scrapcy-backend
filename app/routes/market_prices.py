@@ -30,7 +30,7 @@ class SheetRow(BaseModel):
     Material: str          
     Grade: Optional[str] = None 
     Location: str          
-    Price: float           
+    Price: Optinal[float] = None           
     Currency: str = "INR"  
     PER_UNIT: str = "MT"   
 
@@ -71,11 +71,16 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
     processed_count = 0
     updated_count = 0
     inserted_count = 0
+    skipped_row_count = 0
     errors = []
 
     # --- B. Loop through Rows ---
     for i, row in enumerate(rows):
         try:
+            #--Skipping row when price is null
+            if(row.Price is None):
+                skipped_row_count += 1
+                continue
             # Normalize Inputs
             raw_loc = row.Location.strip().lower()
             raw_cat = row.CATEGORY.strip().lower()
@@ -159,6 +164,7 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
         "processed": processed_count,
         "inserted": inserted_count,
         "updated": updated_count,
+        "skipped_rows": skipped_row_count,
         "failed_count": len(errors),
         "errors": errors
     }
