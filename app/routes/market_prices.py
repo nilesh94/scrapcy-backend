@@ -174,3 +174,115 @@ def get_price_history(limit: int = 50, db: Session = Depends(get_db)):
     """
     prices = db.query(ScrapPriceHistory).order_by(ScrapPriceHistory.recorded_at.desc()).limit(limit).all()
     return prices
+
+@router.get("/search")
+def search_price(
+    location: str,
+    query_term: Optional[str] = None, # Can be Material Name OR Category Name OR None
+    db: Session = Depends(get_db)
+):
+    """
+    Universal Search:
+    - If 'query_term' matches a MATERIAL -> Returns price for that material.
+    - If 'query_term' matches a CATEGORY -> Returns prices for ALL materials in that category.
+    - If 'query_term' is EMPTY -> Returns ALL prices for the location.
+    """
+    
+    # 1. RESOLVE LOCATION
+    loc_search = location.strip().lower()
+    location_obj = db.query(Location).filter(
+        (func.lower(Location.location_name) == loc_search) |
+        (func.lower(Location.city) == loc_search) |
+        (func.lower(Location.search_aliases).like(f"%{loc_search}%"))
+    ).first()
+
+    if not location_obj:
+        return {"status": "error", "message": f"Location '{location}' not found."}
+
+    # 2. DETERMINE SCOPE (Material vs. Category vs. All)
+    target_material_id = None
+    target_category_id = None
+    
+    if query_term:
+        term = query_term.strip().lower()
+        
+        # A) Check if it's a MATERIAL (e.g., "HMS Scrap")
+        mat_obj = db.query(ScrapMaterial).filter(
+            (func.lower(ScrapMaterial.material_name) == term) | 
+            (func.lower(ScrapMaterial.material_name).like(f"%{term}%"))
+        ).first()
+        
+        if mat_obj:
+            target_material_id = mat_obj.id
+        else:
+            # B) Check if it's a CATEGORY (e.g., "Ferrous")
+            cat_obj = db.query(ScrapCategory).filter(
+                func.lower(ScrapCategory.material_category) == term
+            ).first()
+            if cat_obj:
+                target_category_id = cat_obj.id
+            else:
+                return {"status": "error", "message": f"Could not find material or category matching '{query_term}'"}
+
+    # 3. FETCH PRICES (The "Latest per Material" Logic)
+    # We need to fetch the latest price for *each* material relevant to the query.
+    
+    # Base Filter
+    filters = [ScrapPriceHistory.location_id == location_obj.id]
+    
+    if target_material_id:
+        filters.append(ScrapPriceHistory.material_id == target_material_id)
+    elif target_category_id:
+        filters.append(ScrapPriceHistory.category_id == target_category_id)
+        
+    # Get all records matching criteria, ordered by date desc
+    # (In a real production app, you'd use a subquery to get distinct materials, 
+    # but for simplicity, we fetch recent rows and deduce latest in Python)
+    raw_history = db.query(ScrapPriceHistory).filter(*filters)\
+        .order_by(ScrapPriceHistory.material_id, ScrapPriceHistory.recorded_at.desc())\
+        .limit(100).all() # Safety limit
+
+    if not raw_history:
+        return {"status": "no_data", "message": f"No data found for {location_obj.location_name}"}
+
+    # 4. GROUP BY MATERIAL (Find latest for each)
+    latest_map = {} # Key: MaterialID -> Record
+    for record in raw_history:
+        if record.material_id not in latest_map:
+            latest_map[record.material_id] = record
+    
+    results = []
+    
+    # 5. CALCULATE MOVING AVERAGE FOR EACH RESULT
+    for mat_id, record in latest_map.items():
+        # 5-Day Avg Logic
+        end_date = record.recorded_at
+        start_date = end_date - timedelta(days=5)
+        
+        avg_price = db.query(func.avg(ScrapPriceHistory.price_per_mt)).filter(
+            ScrapPriceHistory.location_id == location_obj.id,
+            ScrapPriceHistory.material_id == mat_id,
+            ScrapPriceHistory.recorded_at >= start_date,
+            ScrapPriceHistory.recorded_at <= end_date
+        ).scalar()
+        
+        # Resolve Names
+        mat_name = db.query(ScrapMaterial).get(mat_id).material_name
+        grade_name = record.grade.grade_name if record.grade else "General"
+
+        results.append({
+            "material": mat_name,
+            "grade": grade_name,
+            "price": record.price_per_mt,
+            "unit": record.unit,
+            "date": record.recorded_at.strftime("%Y-%m-%d"),
+            "avg_5d": round(avg_price, 2) if avg_price else record.price_per_mt,
+            "trend": "UP" if record.price_per_mt > (avg_price or 0) else "DOWN"
+        })
+
+    return {
+        "status": "success",
+        "location": location_obj.location_name,
+        "count": len(results),
+        "data": results
+    }
