@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timedelta
-# Updated imports for validation
 from pydantic import BaseModel, field_validator
 
 # Import Database and Models
@@ -198,104 +197,123 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
 
 
 # ==========================================
-# 2. UNIVERSAL SEARCH (For AI/WhatsApp)
+# 2. PARAMETER-BASED SEARCH
 # ==========================================
 
 @router.get("/search")
 def search_price(
     location: Optional[str] = None,
-    query_term: Optional[str] = None, # Material OR Category
+    category: Optional[str] = None,
+    material: Optional[str] = None,
+    grade: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Universal Search Logic with Robust Moving Average.
-    FIXED: Uses Distinct Material Query to avoid getting buried by duplicates.
+    Parametric Search:
+    - Filters by Location AND Category AND Material AND Grade.
+    - Groups results by (Location + Material + Grade).
+    - Returns the LATEST price for each unique group found.
+    - Includes 5-Day Moving Average in response.
     """
     
-    # --- A. Sanitize Inputs ---
-    # Treat empty strings or "All" as None (Global Search)
-    if location and location.strip().lower() in ["", "all locations", "all", "saare location", "everywhere", "sab jagah"]:
-        location = None
-        
-    base_filters = []
-    location_name_display = "All Locations"
+    filters = []
+    search_context_parts = []
 
-    # --- B. Resolve Location (If specific city requested) ---
-    if location:
+    # 1. Location Filter
+    # Treat empty/generic strings as None (no filter)
+    if location and location.strip().lower() not in ["", "all", "all locations", "saare location", "everywhere", "sab jagah"]:
         loc_search = location.strip().lower()
-        location_obj = db.query(Location).filter(
+        loc_obj = db.query(Location).filter(
             (func.lower(Location.location_name) == loc_search) |
             (func.lower(Location.city) == loc_search) |
             (func.lower(Location.search_aliases).like(f"%{loc_search}%"))
         ).first()
 
-        if location_obj:
-            # Add Location Filter
-            base_filters.append(ScrapPriceHistory.location_id == location_obj.id)
-            location_name_display = location_obj.location_name
+        if loc_obj:
+            filters.append(ScrapPriceHistory.location_id == loc_obj.id)
+            search_context_parts.append(f"Location: {loc_obj.location_name}")
         else:
             return {"status": "error", "message": f"Location '{location}' not found."}
 
-    # --- C. Resolve Material (Fuzzy Match Logic) ---
-    if query_term:
-        term = query_term.strip().lower()
-        
-        # 1. Try Exact Match
-        mat_obj = db.query(ScrapMaterial).filter(
-            (func.lower(ScrapMaterial.material_name) == term) | 
-            (func.lower(ScrapMaterial.material_name).like(f"%{term}%")) 
+    # 2. Category Filter
+    if category:
+        cat_term = category.strip().lower()
+        cat_obj = db.query(ScrapCategory).filter(
+            func.lower(ScrapCategory.material_category) == cat_term
         ).first()
-        
-        # 2. Try Category Match (if no material found)
-        if not mat_obj:
-            cat_obj = db.query(ScrapCategory).filter(
-                func.lower(ScrapCategory.material_category) == term
-            ).first()
-            if cat_obj:
-                base_filters.append(ScrapPriceHistory.category_id == cat_obj.id)
-        
-        # 3. Fuzzy Fallback (Fix for "End Cutting Metal Scrap")
-        # We check if the DB Name (e.g., "End Cutting") is inside the User Query
-        if not mat_obj and 'cat_obj' not in locals():
-            all_materials = db.query(ScrapMaterial).all()
-            for m in all_materials:
-                if m.material_name.lower() in term: 
-                    mat_obj = m
-                    break
-        
-        # Apply Material Filter
+
+        if cat_obj:
+            filters.append(ScrapPriceHistory.category_id == cat_obj.id)
+            search_context_parts.append(f"Category: {cat_obj.material_category}")
+        else:
+            return {"status": "error", "message": f"Category '{category}' not found."}
+
+    # 3. Material Filter
+    if material:
+        mat_term = material.strip().lower()
+        mat_obj = db.query(ScrapMaterial).filter(
+            (func.lower(ScrapMaterial.material_name) == mat_term) |
+            (func.lower(ScrapMaterial.material_name).like(f"%{mat_term}%"))
+        ).first()
+
         if mat_obj:
-            base_filters.append(ScrapPriceHistory.material_id == mat_obj.id)
-        elif 'cat_obj' not in locals():
-            return {"status": "error", "message": f"No material found for '{query_term}'"}
+            filters.append(ScrapPriceHistory.material_id == mat_obj.id)
+            search_context_parts.append(f"Material: {mat_obj.material_name}")
+        else:
+            return {"status": "error", "message": f"Material '{material}' not found."}
 
-    # --- D. The "Show All" Fix ---
-    # Query: "Get every unique (Material, Location) pair matching our filters"
-    # This guarantees we get Mandi AND Raipur AND Alang
-    distinct_pairs = db.query(
-        ScrapPriceHistory.material_id, 
-        ScrapPriceHistory.location_id
-    ).filter(*base_filters).distinct().all()
+    # 4. Grade Filter
+    if grade:
+        grade_term = grade.strip().lower()
+        grade_obj = db.query(ScrapGrade).filter(
+            func.lower(ScrapGrade.grade_name) == grade_term
+        ).first()
 
-    if not distinct_pairs:
-         return {"status": "no_data", "message": "No pricing data found."}
+        if grade_obj:
+            filters.append(ScrapPriceHistory.grade_id == grade_obj.id)
+            search_context_parts.append(f"Grade: {grade_obj.grade_name}")
+        else:
+            return {"status": "error", "message": f"Grade '{grade}' not found."}
+
+    # --- FETCH DISTINCT GROUPS ---
+    # We want the latest price for every distinct combination of:
+    # Location + Material + Grade
+    # This ensures that "Ship Breaking" returns separate rows for "Attachment" and "Tukdi"
+    
+    distinct_groups = db.query(
+        ScrapPriceHistory.location_id,
+        ScrapPriceHistory.material_id,
+        ScrapPriceHistory.grade_id
+    ).filter(*filters).distinct().all()
+
+    if not distinct_groups:
+         return {"status": "no_data", "message": "No pricing data found for these filters."}
 
     results = []
 
-    # --- E. Loop Through Each Pair ---
-    for mat_id, loc_id in distinct_pairs:
-        # Get the latest price for THIS specific city + material
-        latest_record = db.query(ScrapPriceHistory).filter(
+    # --- LOOP AND GET LATEST PRICE ---
+    for loc_id, mat_id, grade_id in distinct_groups:
+        
+        # Build filter for this specific group
+        group_filters = [
+            ScrapPriceHistory.location_id == loc_id,
             ScrapPriceHistory.material_id == mat_id,
-            ScrapPriceHistory.location_id == loc_id
-        ).order_by(ScrapPriceHistory.recorded_at.desc()).first()
+            ScrapPriceHistory.grade_id == grade_id
+        ]
+        
+        # Query latest record
+        latest_record = db.query(ScrapPriceHistory).filter(*group_filters)\
+            .order_by(ScrapPriceHistory.recorded_at.desc())\
+            .first()
 
         if latest_record:
             process_record(latest_record, db, results)
 
+    context_str = " | ".join(search_context_parts) if search_context_parts else "Global Search"
+
     return {
         "status": "success",
-        "search_context": location_name_display,
+        "search_context": context_str,
         "count": len(results),
         "data": results
     }
@@ -316,6 +334,7 @@ def process_record(record, db, results_list):
     avg_price = db.query(func.avg(ScrapPriceHistory.price_per_mt)).filter(
         ScrapPriceHistory.location_id == record.location_id,
         ScrapPriceHistory.material_id == record.material_id,
+        ScrapPriceHistory.grade_id == record.grade_id, # Ensure we avg same Grade too
         ScrapPriceHistory.recorded_at >= start_date,
         ScrapPriceHistory.recorded_at <= end_date
     ).scalar()
