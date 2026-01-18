@@ -2,8 +2,8 @@ from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
-# Import for relationship mapping (Ensure these models exist in your project)
-from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapGrade
+# Import for relationship mapping (Updated to include ScrapForm)
+from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapForm, ScrapGrade
 
 class ScrapListing(Base):
     __tablename__ = "scrap_listings"
@@ -18,9 +18,10 @@ class ScrapListing(Base):
     phone = Column(String(50), nullable=False)
     alternate_phone = Column(String(50), nullable=True)
     
-    # --- UPDATED: Match Oracle NOT NULL Constraints ---
+    # --- UPDATED: Match Oracle Constraints & New Hierarchy ---
     category_id = Column(Integer, ForeignKey("scrap_categories.id"), nullable=False) 
     material_id = Column(Integer, ForeignKey("scrap_materials.id"), nullable=False)
+    form_id = Column(Integer, ForeignKey("scrap_form.id"), nullable=True) # Added Form ID
     grade_id = Column(Integer, ForeignKey("scrap_grades.id"), nullable=True)
 
     # Legacy Columns (Keep for backward compatibility)
@@ -47,6 +48,7 @@ class ScrapListing(Base):
     # Relationships for Pydantic Serialization
     category_ref = relationship("ScrapCategory", lazy="joined")
     material_ref = relationship("ScrapMaterial", lazy="joined")
+    form_ref = relationship("ScrapForm", lazy="joined") # Added Form Ref
     grade_ref = relationship("ScrapGrade", lazy="joined")
 
 
