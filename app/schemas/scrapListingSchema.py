@@ -20,6 +20,13 @@ class MaterialOut(BaseModel):
     class Config:
         from_attributes = True
 
+class FormOut(BaseModel):
+    id: int
+    form_name: str
+
+    class Config:
+        from_attributes = True
+
 class GradeOut(BaseModel):
     id: int
     # WAS: name: str
@@ -54,6 +61,7 @@ class ScrapListingBase(BaseModel):
     # IDs
     category_id: int
     material_id: int
+    form_id: Optional[int] = None 
     grade_id: Optional[int] = None
 
     # Legacy Fields
@@ -83,6 +91,7 @@ class ScrapListingResponse(ScrapListingBase):
     # Nested Relationship Objects
     category_ref: Optional[CategoryOut] = None
     material_ref: Optional[MaterialOut] = None
+    form_ref: Optional[FormOut] = None     # Added new Form Ref
     grade_ref: Optional[GradeOut] = None
 
     images: List[ScrapImageResponse] = []
