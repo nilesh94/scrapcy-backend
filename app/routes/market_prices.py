@@ -24,38 +24,38 @@ router = APIRouter(
 # ==========================================
 
 class SheetRow(BaseModel):
-    # Added row_number as optional (present in your JSON)
+    # Optional row number from JSON
     row_number: Optional[int] = None
     
-    # Exact keys from JSON
+    # --- EXACT JSON KEY MAPPING ---
     Date: str              
     Time_Slot: str = "00:00" 
     
-    # Map Input "Scarp_Type" -> Internal "SCRAP_TYPE"
+    # Map "Scarp_Type" -> Internal "SCRAP_TYPE"
     SCRAP_TYPE: str = Field(..., alias="Scarp_Type")
     
-    # Map Input "Category" -> Internal "CATEGORY"
+    # Map "Category" -> Internal "CATEGORY"
     CATEGORY: str = Field(..., alias="Category")
     
-    # Map Input "Material_Name" -> Internal "Material"
+    # Map "Material_Name" -> Internal "Material"
     Material: str = Field(..., alias="Material_Name")
     
-    # Map Input "Form" -> Internal "Form"
+    # Map "Form" -> Internal "Form"
     Form: Optional[str] = Field(None, alias="Form")
     
-    # Input "Grade" matches internal name
+    # "Grade" matches directly
     Grade: Optional[str] = None 
     
-    # Input "Location" matches internal name
+    # "Location" matches directly
     Location: str          
     
-    # Allow float OR None. 
+    # "Price" matches directly (Float or None)
     Price: Optional[Union[float, None]] = None           
     
-    # Input "Currency" matches internal name
+    # "Currency" matches directly
     Currency: str = "INR"
     
-    # Map Input "Per_unit" -> Internal "PER_UNIT"
+    # Map "Per_unit" -> Internal "PER_UNIT"
     PER_UNIT: str = Field("MT", alias="Per_unit")
 
     # --- VALIDATOR: FIX THE "STRING AS NUMBER" ERROR ---
@@ -109,7 +109,6 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
         # 2. Build Category/Material/Form/Grade Maps
         cat_map = {c.material_category.strip().lower(): c.id for c in db.query(ScrapCategory).all()}
         mat_map = {m.material_name.strip().lower(): m.id for m in db.query(ScrapMaterial).all()}
-        # Added Form Map
         form_map = {f.form_name.strip().lower(): f.id for f in db.query(ScrapForm).all()}
         grade_map = {g.grade_name.strip().lower(): g.id for g in db.query(ScrapGrade).all()}
 
@@ -173,11 +172,11 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                     recorded_at = datetime.now()
 
             # --- C. UPSERT LOGIC ---
-            # Check if this exact price record already exists (Added form_id check)
+            # Check if this exact price record already exists
             existing_record = db.query(ScrapPriceHistory).filter(
                 ScrapPriceHistory.location_id == loc_id,
                 ScrapPriceHistory.material_id == mat_id,
-                ScrapPriceHistory.form_id == form_id,     # New Check
+                ScrapPriceHistory.form_id == form_id,
                 ScrapPriceHistory.grade_id == grade_id,
                 ScrapPriceHistory.recorded_at == recorded_at
             ).first()
@@ -194,7 +193,7 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
                     location_id=loc_id,
                     category_id=cat_id,
                     material_id=mat_id,
-                    form_id=form_id,     # New Field
+                    form_id=form_id,
                     grade_id=grade_id,
                     price_per_mt=row.Price,
                     currency=row.Currency,
@@ -236,7 +235,7 @@ def search_price(
     location: Optional[str] = None,
     category: Optional[str] = None,
     material: Optional[str] = None,
-    form: Optional[str] = None,    # Added Form Param
+    form: Optional[str] = None,
     grade: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
@@ -293,7 +292,7 @@ def search_price(
         else:
             return {"status": "error", "message": f"Material '{material}' not found."}
 
-    # 4. Form Filter (New)
+    # 4. Form Filter
     if form:
         form_term = form.strip().lower()
         form_obj = db.query(ScrapForm).filter(
@@ -320,13 +319,11 @@ def search_price(
             return {"status": "error", "message": f"Grade '{grade}' not found."}
 
     # --- FETCH DISTINCT GROUPS ---
-    # We want the latest price for every distinct combination of:
-    # Location + Material + Form + Grade
     
     distinct_groups = db.query(
         ScrapPriceHistory.location_id,
         ScrapPriceHistory.material_id,
-        ScrapPriceHistory.form_id,  # Added Form ID
+        ScrapPriceHistory.form_id,
         ScrapPriceHistory.grade_id
     ).filter(*filters).distinct().all()
 
@@ -342,7 +339,7 @@ def search_price(
         group_filters = [
             ScrapPriceHistory.location_id == loc_id,
             ScrapPriceHistory.material_id == mat_id,
-            ScrapPriceHistory.form_id == form_id,  # Added Form ID
+            ScrapPriceHistory.form_id == form_id,
             ScrapPriceHistory.grade_id == grade_id
         ]
         
@@ -392,8 +389,8 @@ def process_record(record, db, results_list):
     avg_price = db.query(func.avg(ScrapPriceHistory.price_per_mt)).filter(
         ScrapPriceHistory.location_id == record.location_id,
         ScrapPriceHistory.material_id == record.material_id,
-        ScrapPriceHistory.form_id == record.form_id,     # Avg specific to Form
-        ScrapPriceHistory.grade_id == record.grade_id,   # Avg specific to Grade
+        ScrapPriceHistory.form_id == record.form_id,
+        ScrapPriceHistory.grade_id == record.grade_id,
         ScrapPriceHistory.recorded_at >= start_date,
         ScrapPriceHistory.recorded_at <= end_date
     ).scalar()
@@ -410,7 +407,7 @@ def process_record(record, db, results_list):
     results_list.append({
         "location": loc_name,
         "material": mat_name,
-        "form": form_name,      # Added Form to Output
+        "form": form_name,
         "grade": grade_name,
         "price": record.price_per_mt,
         "unit": record.unit,
@@ -426,12 +423,10 @@ def process_record(record, db, results_list):
 
 @router.post("/add", response_model=MarketPriceResponse)
 def add_market_price(price_data: MarketPriceCreate, db: Session = Depends(get_db)):
-    # Assumes MarketPriceCreate schema is updated to accept form_id
-    # If not, this might need an update in schemas/market_data.py
     new_price = ScrapPriceHistory(
         category_id=price_data.category_id,
         material_id=price_data.material_id,
-        form_id=getattr(price_data, 'form_id', None), # Safely get form_id if exists
+        form_id=getattr(price_data, 'form_id', None), 
         grade_id=price_data.grade_id,
         location_id=price_data.location_id,
         price_per_mt=price_data.price_per_mt,
