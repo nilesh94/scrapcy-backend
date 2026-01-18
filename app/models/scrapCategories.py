@@ -12,6 +12,7 @@ class ScrapCategory(Base):
     
     is_active = Column(Boolean, default=True) 
     
+    # Relationship: One Category has many Materials
     materials = relationship("ScrapMaterial", back_populates="category")
 
 class ScrapMaterial(Base):
@@ -22,15 +23,35 @@ class ScrapMaterial(Base):
     material_name = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
     
+    # Relationship: Belongs to Category
     category = relationship("ScrapCategory", back_populates="materials")
-    grades = relationship("ScrapGrade", back_populates="material")
+    
+    # Relationship: One Material has many Forms (Updated from grades)
+    forms = relationship("ScrapForm", back_populates="material")
+
+class ScrapForm(Base):
+    # Note: DB table name is singular 'SCRAP_FORM' per your describe command
+    __tablename__ = "scrap_form" 
+    
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("scrap_materials.id"))
+    form_name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+    
+    # Relationship: Belongs to Material
+    material = relationship("ScrapMaterial", back_populates="forms")
+    
+    # Relationship: One Form has many Grades
+    grades = relationship("ScrapGrade", back_populates="form")
 
 class ScrapGrade(Base):
     __tablename__ = "scrap_grades"
     
     id = Column(Integer, primary_key=True, index=True)
-    material_id = Column(Integer, ForeignKey("scrap_materials.id"))
+    # Updated FK to link to Form instead of Material
+    form_id = Column(Integer, ForeignKey("scrap_form.id")) 
     grade_name = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
 
-    material = relationship("ScrapMaterial", back_populates="grades")
+    # Relationship: Belongs to Form
+    form = relationship("ScrapForm", back_populates="grades")
