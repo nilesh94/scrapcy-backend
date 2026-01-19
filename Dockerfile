@@ -1,10 +1,12 @@
-# 1. Use Python 3.9 Bullseye (Maximum Stability)
-FROM python:3.9-slim-bullseye
+# 1. Use Python 3.9 Slim (Debian 12 Bookworm)
+# Removing 'bullseye' ensures you use the latest stable Debian security updates
+FROM python:3.9-slim
 
 # 2. Install Build Tools
+# UPDATE: 'libaio1' is now 'libaio1t64' in Debian 12
 RUN apt-get update && apt-get install -y \
     build-essential \
-    libaio1 \
+    libaio1t64 \
     git \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -14,6 +16,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
+# Oracle DB Driver
 RUN pip install --no-cache-dir git+https://github.com/oracle/python-oracledb.git@v2.5.1
 
 RUN pip install --no-cache-dir email-validator
