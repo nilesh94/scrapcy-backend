@@ -23,7 +23,7 @@ class User(Base):
     # Optional Fields (Nullable)
     company_name = Column("COMPANY_NAME", String(255), nullable=True)
     business_type = Column("BUSINESS_TYPE", String(100), nullable=True)
-    industry = Column("INDUSTRY", String(100), nullable=True)
+    industry = Column("INDUSTRY", String(255), nullable=True)
     turnover = Column("TURNOVER", String(100), nullable=True)
     
     gst_number = Column("GST_NUMBER", String(50), nullable=True)
