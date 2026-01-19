@@ -6,7 +6,6 @@ from datetime import datetime
 class CategoryOut(BaseModel):
     id: int
     material_category: str 
-    # Optional: Include scrap_type if you need it in the nested object
     scrap_type: Optional[str] = None
     
     class Config:
@@ -14,7 +13,6 @@ class CategoryOut(BaseModel):
 
 class MaterialOut(BaseModel):
     id: int
-    # WAS: name: str
     material_name: str 
 
     class Config:
@@ -29,7 +27,6 @@ class FormOut(BaseModel):
 
 class GradeOut(BaseModel):
     id: int
-    # WAS: name: str
     grade_name: str
 
     class Config:
@@ -50,7 +47,6 @@ class ScrapImageResponse(ScrapImageBase):
 
 # --- LISTING SCHEMAS ---
 class ScrapListingBase(BaseModel):
-    # Seller
     seller_name: str
     company_name: Optional[str] = None
     gst_number: Optional[str] = None
@@ -58,17 +54,14 @@ class ScrapListingBase(BaseModel):
     phone: str
     alternate_phone: Optional[str] = None
     
-    # IDs
     category_id: int
     material_id: int
     form_id: Optional[int] = None 
     grade_id: Optional[int] = None
 
-    # Legacy Fields
     scrap_type: str            
     grade: Optional[str] = None 
     
-    # Scrap Details
     description: Optional[str] = None
     quantity: float
     unit: str
@@ -76,7 +69,6 @@ class ScrapListingBase(BaseModel):
     price_unit: str
     monthly_capacity: Optional[str] = None
     
-    # Location
     address: str
     pickup_conditions: Optional[str] = None
 
@@ -88,13 +80,48 @@ class ScrapListingResponse(ScrapListingBase):
     is_admin_entry: bool
     created_at: datetime
     
-    # Nested Relationship Objects
     category_ref: Optional[CategoryOut] = None
     material_ref: Optional[MaterialOut] = None
-    form_ref: Optional[FormOut] = None     # Added new Form Ref
+    form_ref: Optional[FormOut] = None     
     grade_ref: Optional[GradeOut] = None
 
     images: List[ScrapImageResponse] = []
 
+    class Config:
+        from_attributes = True
+
+# =======================================================
+# NEW: HIERARCHY SCHEMAS (For Dropdown Menus)
+# =======================================================
+
+class GradeHierarchyResponse(BaseModel):
+    id: int
+    grade_name: str
+    is_active: bool = True
+    class Config:
+        from_attributes = True
+
+class FormHierarchyResponse(BaseModel):
+    id: int
+    form_name: str
+    is_active: bool = True
+    grades: List[GradeHierarchyResponse] = []
+    class Config:
+        from_attributes = True
+
+class MaterialHierarchyResponse(BaseModel):
+    id: int
+    material_name: str
+    is_active: bool = True
+    forms: List[FormHierarchyResponse] = []
+    class Config:
+        from_attributes = True
+
+class CategoryHierarchyResponse(BaseModel):
+    id: int
+    scrap_type: str
+    material_category: str
+    is_active: bool = True
+    materials: List[MaterialHierarchyResponse] = []
     class Config:
         from_attributes = True
