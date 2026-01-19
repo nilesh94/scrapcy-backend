@@ -27,7 +27,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             )
 
         # 2. Check Seller Requirements
-        if user.role == 'seller':
+        if 'seller' == user.role:
             if not user.company_name or not user.gst_number or not user.address:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
