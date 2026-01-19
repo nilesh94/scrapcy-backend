@@ -2,8 +2,8 @@ from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
-# Ensure existing models are imported to resolve ForeignKeys
-from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapGrade
+# UPDATED IMPORT: Added ScrapForm so the relationship works
+from .scrapCategories import ScrapCategory, ScrapMaterial, ScrapForm, ScrapGrade
 
 class Location(Base):
     __tablename__ = "LOCATIONS"
@@ -41,6 +41,10 @@ class ScrapPriceHistory(Base):
     
     category_id = Column("CATEGORY_ID", Integer, ForeignKey("scrap_categories.id"), nullable=False)
     material_id = Column("MATERIAL_ID", Integer, ForeignKey("scrap_materials.id"), nullable=False)
+    
+    # --- NEW FIELD ADDED HERE ---
+    form_id = Column("FORM_ID", Integer, ForeignKey("scrap_form.id"), nullable=True)
+    
     grade_id = Column("GRADE_ID", Integer, ForeignKey("scrap_grades.id"), nullable=True)
     location_id = Column("LOCATION_ID", Integer, ForeignKey("LOCATIONS.ID"), nullable=False)
     
@@ -56,4 +60,8 @@ class ScrapPriceHistory(Base):
     location = relationship("Location", back_populates="prices")
     category = relationship("ScrapCategory", lazy="joined")
     material = relationship("ScrapMaterial", lazy="joined")
+    
+    # --- NEW RELATIONSHIP ADDED HERE ---
+    form = relationship("ScrapForm", lazy="joined")
+    
     grade = relationship("ScrapGrade", lazy="joined")
