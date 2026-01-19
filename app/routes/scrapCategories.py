@@ -4,8 +4,8 @@ from typing import List
 
 from ..database.connection import get_db
 from ..models.scrapCategories import ScrapCategory, ScrapMaterial, ScrapForm, ScrapGrade
-# Import the new schemas
-from ..schemas.scrapCategorySchema import CategoryHierarchyResponse, FormResponse
+# UPDATE: Import from scrapListingSchema where you added the hierarchy models
+from ..schemas.scrapListingSchema import CategoryHierarchyResponse, FormHierarchyResponse
 
 router = APIRouter(
     prefix="/categories",
@@ -31,7 +31,8 @@ def get_category_hierarchy(db: Session = Depends(get_db)):
     return categories
 
 # --- 2. GET FORMS BY MATERIAL ID (Best for Lazy Loading) ---
-@router.get("/material/{material_id}/forms", response_model=List[FormResponse])
+# UPDATE: response_model changed to FormHierarchyResponse to match schema
+@router.get("/material/{material_id}/forms", response_model=List[FormHierarchyResponse])
 def get_forms_by_material(material_id: int, db: Session = Depends(get_db)):
     """
     Returns only the Forms (and their grades) for a specific Material ID.
