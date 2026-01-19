@@ -6,8 +6,8 @@ import io
 
 from app.database.connection import get_db
 from app.models.scrapListing import ScrapListing, ScrapImage
-# Import the definition models for lookups
-from app.models.scrapCategories import ScrapCategory, ScrapMaterial, ScrapGrade 
+# Import the definition models for lookups (Added ScrapForm)
+from app.models.scrapCategories import ScrapCategory, ScrapMaterial, ScrapForm, ScrapGrade 
 from app.schemas import scrapListingSchema as schemas
 from app.utils.driveUtils import upload_file_to_drive, delete_file_from_drive 
 
@@ -29,6 +29,7 @@ async def add_scrap_listing(
     # --- Accepting IDs ---
     category_id: int = Form(...),
     material_id: int = Form(...),
+    form_id: Optional[int] = Form(None),   # Added Form ID
     grade_id: Optional[int] = Form(None),
     
     description: Optional[str] = Form(None),
@@ -51,12 +52,16 @@ async def add_scrap_listing(
     try:
         cat_obj = db.query(ScrapCategory).get(category_id)
         mat_obj = db.query(ScrapMaterial).get(material_id)
+        form_obj = db.query(ScrapForm).get(form_id) if form_id else None # Added Lookup
         grad_obj = db.query(ScrapGrade).get(grade_id) if grade_id else None
 
         if not cat_obj:
              raise HTTPException(status_code=400, detail="Invalid Category ID")
         if not mat_obj:
              raise HTTPException(status_code=400, detail="Invalid Material ID")
+        # Optional: Validate Form ID if provided
+        if form_id and not form_obj:
+             raise HTTPException(status_code=400, detail="Invalid Form ID")
 
         # --- CONSTRUCT LEGACY STRINGS (FIXED ATTRIBUTES) ---
         # Based on your AdminDashboard.js, these are the real column names:
@@ -68,8 +73,13 @@ async def add_scrap_listing(
         # 2. Material Name (e.g. "Copper")
         mat_name = getattr(mat_obj, 'material_name', 'Unknown Material')
         
-        # 3. Grade Name (e.g. "Millberry")
+        # 3. Grade Name (Updated to include Form if available)
         legacy_grade_name = f"{mat_name}"
+        
+        if form_obj:
+            form_name = getattr(form_obj, 'form_name', '')
+            legacy_grade_name += f" - {form_name}"
+            
         if grad_obj:
             grad_name = getattr(grad_obj, 'grade_name', '')
             legacy_grade_name += f" ({grad_name})"
@@ -81,6 +91,7 @@ async def add_scrap_listing(
             # New Relationship IDs
             category_id=category_id,
             material_id=material_id,
+            form_id=form_id,  # Added
             grade_id=grade_id,
 
             # Legacy Text Fields (Auto-Filled with correct names)
@@ -151,6 +162,7 @@ def get_all_listings(
         joinedload(ScrapListing.images),
         joinedload(ScrapListing.category_ref),
         joinedload(ScrapListing.material_ref),
+        joinedload(ScrapListing.form_ref), # Added Form Join
         joinedload(ScrapListing.grade_ref)
     )
     
@@ -166,6 +178,7 @@ def get_listing_detail(listing_id: int, db: Session = Depends(get_db)):
         joinedload(ScrapListing.images),
         joinedload(ScrapListing.category_ref),
         joinedload(ScrapListing.material_ref),
+        joinedload(ScrapListing.form_ref), # Added Form Join
         joinedload(ScrapListing.grade_ref)
     ).filter(ScrapListing.id == listing_id).first()
     
