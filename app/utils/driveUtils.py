@@ -1,14 +1,20 @@
 import os
-from google.auth.transport.requests import Request
+from google.oauth2 import service_account  # NEW IMPORT
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 # CONFIG
 SCOPES = ['https://www.googleapis.com/auth/drive']
-# Helper to find the root folder (where token.json lives)
+
+# Helper to find the root folder
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
+
+# PRIORITY 1: Service Account (Best for Server/Render)
+SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'service_account.json')
+
+# PRIORITY 2: User Token (Best for Local Testing)
 TOKEN_FILE = os.path.join(BASE_DIR, 'token.json')
 
 # YOUR FOLDER ID
@@ -16,23 +22,37 @@ PARENT_FOLDER_ID = '18aO52EB8Tyc_dbXEpKl7FWc00Cr-dLJs'
 
 def authenticate_drive():
     creds = None
-    # 1. Load existing token
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     
-    # 2. Refresh if expired
+    # --- METHOD 1: SERVICE ACCOUNT (Recommended) ---
+    if os.path.exists(SERVICE_ACCOUNT_FILE):
+        try:
+            # print("Using Service Account for Drive Auth...")
+            creds = service_account.Credentials.from_service_account_file(
+                SERVICE_ACCOUNT_FILE, scopes=SCOPES
+            )
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            print(f"Service Account Error: {e}")
+            # If this fails, we fall through to try the Token method
+            pass
+
+    # --- METHOD 2: USER TOKEN (Legacy/Local) ---
+    if os.path.exists(TOKEN_FILE):
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+            
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                    # Save the refreshed token
+                    with open(TOKEN_FILE, 'w') as token:
+                        token.write(creds.to_json())
+        except Exception as e:
+             print(f"Token refresh failed: {e}")
+             raise Exception("Token invalid. Please switch to Service Account (service_account.json).")
+             
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                # Save the refreshed token
-                with open(TOKEN_FILE, 'w') as token:
-                    token.write(creds.to_json())
-            except Exception as e:
-                print(f"Token refresh failed: {e}")
-                raise Exception("Token invalid and refresh failed. Please regenerate token.json locally.")
-        else:
-             raise Exception("Token invalid or missing. Run generate_token.py locally and upload token.json to Render.")
+        raise Exception("No valid authentication found. Upload 'service_account.json' to server root.")
 
     return build('drive', 'v3', credentials=creds)
 
@@ -57,14 +77,16 @@ def upload_file_to_drive(file_obj, filename, mime_type):
         file_id = file.get('id')
         
         # 2. Make it Public (Anyone with link can view)
-        service.permissions().create(
-            fileId=file_id,
-            body={'type': 'anyone', 'role': 'reader'},
-        ).execute()
+        # Note: Service Accounts permission handling is more robust
+        try:
+            service.permissions().create(
+                fileId=file_id,
+                body={'type': 'anyone', 'role': 'reader'},
+            ).execute()
+        except Exception as p_err:
+            print(f"Warning: Could not set public permission: {p_err}")
 
         # 3. Generate High-Quality Display Link
-        # 'sz=s4000' allows up to 4000px on the longest side (High Quality)
-        # We use the 'thumbnail' endpoint because it works reliably in <img> tags
         direct_link = f"https://drive.google.com/thumbnail?id={file_id}&sz=s4000"
         
         return {
@@ -81,8 +103,8 @@ def delete_file_from_drive(file_id):
     try:
         service = authenticate_drive()
         service.files().delete(fileId=file_id).execute()
-        print(f"Deleted Drive File ID: {file_id}")
+        # print(f"Deleted Drive File ID: {file_id}")
         return True
     except Exception as e:
-        print(f"Error deleting file {file_id}: {e}")
+        # print(f"Error deleting file {file_id}: {e}")
         return False
