@@ -29,7 +29,7 @@ async def add_scrap_listing(
     # --- Accepting IDs ---
     category_id: int = Form(...),
     material_id: int = Form(...),
-    form_id: Optional[int] = Form(None),   # Added Form ID
+    form_id: Optional[int] = Form(None),
     grade_id: Optional[int] = Form(None),
     
     description: Optional[str] = Form(None),
@@ -162,7 +162,7 @@ def get_all_listings(
         joinedload(ScrapListing.images),
         joinedload(ScrapListing.category_ref),
         joinedload(ScrapListing.material_ref),
-        joinedload(ScrapListing.form_ref), # Added Form Join
+        joinedload(ScrapListing.form_ref),
         joinedload(ScrapListing.grade_ref)
     )
     
@@ -178,7 +178,7 @@ def get_listing_detail(listing_id: int, db: Session = Depends(get_db)):
         joinedload(ScrapListing.images),
         joinedload(ScrapListing.category_ref),
         joinedload(ScrapListing.material_ref),
-        joinedload(ScrapListing.form_ref), # Added Form Join
+        joinedload(ScrapListing.form_ref),
         joinedload(ScrapListing.grade_ref)
     ).filter(ScrapListing.id == listing_id).first()
     
