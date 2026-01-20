@@ -1,3 +1,4 @@
+from datetime import datetime # Required for timestamp
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -26,7 +27,6 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             )
 
         # 2. MANDATORY BUSINESS VALIDATION (For ALL Roles)
-        # We check this for everyone now: Buyer, Seller, or Both.
         if not user.company_name or not user.gst_number or not user.address:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -58,12 +58,16 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         }
 
     except HTTPException as he:
+        # Re-raise HTTP exceptions (like 400 Bad Request) so they go to frontend correctly
         raise he
     except Exception as e:
+        # Log the actual error for the developer
+        print(f"CRITICAL REGISTER ERROR: {str(e)}")
         db.rollback()
+        # Send a safe, generic message to the frontend
         return JSONResponse(
             status_code=500,
-            content={"error": "Database Transaction Failed", "details": str(e)}
+            content={"error": "Registration failed due to a server error. Please try again later."}
         )
 
 # --- LOGIN ---
@@ -79,6 +83,16 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
         
         if not utils.verify_password(user_credentials.password, user.hashed_password):
             raise HTTPException(status_code=403, detail="Invalid Credentials")
+
+        # --- NEW: UPDATE LAST LOGIN TIME ---
+        try:
+            user.last_login_at = datetime.now()
+            db.commit()
+        except Exception as db_e:
+            # If updating time fails, just log it but don't stop the login
+            print(f"WARNING: Could not update login timestamp: {str(db_e)}")
+            db.rollback() 
+        # -----------------------------------
 
         # 3. Generate Token
         access_token = utils.create_access_token(data={"sub": user.email, "role": user.role})
@@ -97,5 +111,11 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Login Error: {e}")
-        return JSONResponse(status_code=500, content={"error": "Login Failed", "details": str(e)})
+        # Log the actual internal error
+        print(f"CRITICAL LOGIN ERROR: {str(e)}")
+        
+        # Return a sanitized error message to the user
+        return JSONResponse(
+            status_code=500, 
+            content={"error": "Login failed. Please contact support if the issue persists."}
+        )
