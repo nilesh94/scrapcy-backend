@@ -36,3 +36,8 @@ class User(Base):
     
     # Timestamp
     created_at = Column("CREATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column("UPDATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
+    last_login_at = Column("LAST_LOGIN_AT", TIMESTAMP, nullable=True)
+    
+    # Ensure is_active matches the DB
+    is_active = Column("IS_ACTIVE", Integer, default=1)
