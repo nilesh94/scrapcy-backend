@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-# Correct Imports based on your folder structure
+# Correct Imports
 from app.database.connection import get_db
 from app.models.users import User 
 from app.schemas import userSchema as schemas 
@@ -14,7 +14,6 @@ router = APIRouter(
 )
 
 # --- REGISTER ---
-# CHANGE 1: Update response_model to the new schema that accepts token + user
 @router.post("/register", response_model=schemas.UserRegistrationResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     try:
@@ -26,13 +25,13 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
                 detail="Email already registered"
             )
 
-        # 2. Check Seller Requirements
-        if 'seller' == user.role:
-            if not user.company_name or not user.gst_number or not user.address:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Sellers must provide Company Name, GST Number, and Registered Address."
-                )
+        # 2. MANDATORY BUSINESS VALIDATION (For ALL Roles)
+        # We check this for everyone now: Buyer, Seller, or Both.
+        if not user.company_name or not user.gst_number or not user.address:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All users must provide Company Name, GST Number, and Registered Address."
+            )
 
         # 3. Hash Password
         hashed_pwd = utils.hash_password(user.password)
@@ -50,9 +49,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         # 5. Create Token immediately for auto-login
         access_token = utils.create_access_token(data={"sub": new_user.email, "role": new_user.role})
         
-        # CHANGE 2: Return the structure matching UserRegistrationResponse
-        # We pass 'new_user' (the full DB object) to the 'user' key.
-        # Pydantic will automatically extract 'id', 'created_at', etc. from it.
+        # 6. Return Response
         return {
             "message": "Registration Successful",
             "access_token": access_token,
