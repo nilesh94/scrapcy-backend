@@ -1,12 +1,14 @@
 from typing import Optional
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-# Import your DB and Models here
+# Database and Models
 from app.database.connection import get_db
 from app.models.users import User
-from app.utils.userUtils import verify_token
+
+# Import pure utility function
+from app.utils.userUtils import verify_token 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/login")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="users/login", auto_error=False)
@@ -18,11 +20,19 @@ async def get_current_user(
 ) -> User:
     payload = verify_token(token)
     if not payload:
-        return None # Or raise HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user_email = payload.get("sub")
     if user_email is None:
-        return None
-    return db.query(User).filter(User.email == user_email).first()
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    user = db.query(User).filter(User.email == user_email).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
 
 # 2. Optional Dependency (User MIGHT be logged in, or is Guest)
 async def get_current_user_optional(
