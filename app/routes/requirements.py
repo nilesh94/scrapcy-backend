@@ -6,7 +6,9 @@ from app.database.connection import get_db
 from app.models.requirements import BuyerRequirement
 from app.models.users import User
 from app.schemas import requirementSchema as schemas
-from app.utils import userUtils as utils 
+
+# --- UPDATED: Import from the new dependencies file ---
+from app.utils.dependencies import get_current_user_optional, get_current_user
 
 router = APIRouter(
     prefix="/requirements",
@@ -19,7 +21,7 @@ def create_requirement(
     req: schemas.RequirementCreate, 
     db: Session = Depends(get_db),
     # Use optional auth to allow guests
-    current_user: Optional[User] = Depends(utils.get_current_user_optional) 
+    current_user: Optional[User] = Depends(get_current_user_optional) 
 ):
     db_req = BuyerRequirement(
         scrap_type=req.scrapType,
@@ -56,7 +58,7 @@ def create_requirement(
 @router.get("/my", response_model=List[schemas.RequirementOut])
 def get_my_requirements(
     db: Session = Depends(get_db),
-    current_user: User = Depends(utils.get_current_user) # Must be logged in
+    current_user: User = Depends(get_current_user) # Must be logged in
 ):
     # Filter: User's ID AND Status is NOT 'DELETED'
     requirements = db.query(BuyerRequirement).filter(
@@ -72,7 +74,7 @@ def update_status(
     req_id: int,
     status_update: schemas.RequirementUpdateStatus,
     db: Session = Depends(get_db),
-    current_user: User = Depends(utils.get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     # Find Requirement
     req = db.query(BuyerRequirement).filter(BuyerRequirement.id == req_id).first()
