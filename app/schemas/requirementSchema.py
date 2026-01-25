@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -13,7 +13,7 @@ class RequirementBase(BaseModel):
     description: str
     note: Optional[str] = None
     
-    # Guest fields (Optional because logged-in users won't send them)
+    # Guest fields (Optional)
     guestName: Optional[str] = None
     guestEmail: Optional[EmailStr] = None
     guestPhone: Optional[str] = None
