@@ -10,7 +10,8 @@ from app.database.connection import engine, Base
 from app.models import users as user_models
 from app.models import scrapListing as scrap_models
 from app.models import scrapCategories as category_models
-from app.models import market_data as market_models # <--- NEW: Register Market/Location Tables
+from app.models import market_data as market_models # <--- Register Market/Location Tables
+from app.models import requirements as requirement_models # <--- NEW: Register Requirements Table
 
 # 3. Import Routers 
 from app.routes import users as user_routes
@@ -19,6 +20,7 @@ from app.routes import scrapCategories as category_routes
 # --- NEW ROUTERS ---
 from app.routes import locations as location_routes
 from app.routes import market_prices as market_price_routes
+from app.routes import requirements as requirement_routes # <--- NEW: Import Requirements Router
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -62,6 +64,7 @@ app.include_router(category_routes.router)
 # --- ACTIVATE NEW ROUTERS ---
 app.include_router(location_routes.router)
 app.include_router(market_price_routes.router)
+app.include_router(requirement_routes.router) # <--- NEW: Enable Requirements API
 
 @app.get("/")
 def read_root():
