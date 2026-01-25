@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import traceback 
 
 from app.database.connection import get_db
 from app.models.requirements import BuyerRequirement
 from app.models.users import User
 from app.schemas import requirementSchema as schemas
-
-# --- UPDATED: Import from the new dependencies file ---
 from app.utils.dependencies import get_current_user_optional, get_current_user
 
 router = APIRouter(
@@ -23,36 +22,44 @@ def create_requirement(
     # Use optional auth to allow guests
     current_user: Optional[User] = Depends(get_current_user_optional) 
 ):
-    db_req = BuyerRequirement(
-        scrap_type=req.scrapType,
-        category=req.category,
-        material=req.material,
-        form=req.form,
-        grade=req.grade,
-        locations=req.locations,
-        description=req.description,
-        note=req.note,
-        status="OPEN"
-    )
+    try:
+        db_req = BuyerRequirement(
+            scrap_type=req.scrapType,
+            category=req.category,
+            material=req.material,
+            form=req.form,
+            grade=req.grade,
+            locations=req.locations, # Maps to PREFERRED_LOCATIONS in DB
+            description=req.description,
+            note=req.note,
+            status="OPEN"
+        )
 
-    if current_user:
-        # Link to logged-in user
-        db_req.user_id = current_user.id
-    else:
-        # Validate Guest Fields if user is not logged in
-        if not all([req.guestName, req.guestEmail, req.guestPhone, req.guestCompany, req.guestGst]):
-             raise HTTPException(status_code=400, detail="All guest details (Name, Email, Phone, Company, GST) are mandatory for non-logged in users.")
-        
-        db_req.guest_name = req.guestName
-        db_req.guest_email = req.guestEmail
-        db_req.guest_phone = req.guestPhone
-        db_req.guest_company = req.guestCompany
-        db_req.guest_gst = req.guestGst
+        if current_user:
+            # Link to logged-in user
+            db_req.user_id = current_user.id
+        else:
+            # Validate Guest Fields if user is not logged in
+            # Note: Pydantic schema handles basic types, but we enforce logic here
+            if not all([req.guestName, req.guestEmail, req.guestPhone, req.guestCompany, req.guestGst]):
+                 raise HTTPException(status_code=400, detail="All guest details (Name, Email, Phone, Company, GST) are mandatory for non-logged in users.")
+            
+            db_req.guest_name = req.guestName
+            db_req.guest_email = req.guestEmail
+            db_req.guest_phone = req.guestPhone
+            db_req.guest_company = req.guestCompany
+            db_req.guest_gst = req.guestGst
 
-    db.add(db_req)
-    db.commit()
-    db.refresh(db_req)
-    return db_req
+        db.add(db_req)
+        db.commit()
+        db.refresh(db_req)
+        return db_req
+
+    except Exception as e:
+        print("Error saving requirement:", e)
+        traceback.print_exc() # This will print the full error to your console
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 # --- 2. GET MY REQUIREMENTS (Logged-in Only) ---
 @router.get("/my", response_model=List[schemas.RequirementOut])
