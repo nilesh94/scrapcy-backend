@@ -20,6 +20,15 @@ class RequirementBase(BaseModel):
     guestCompany: Optional[str] = None
     guestGst: Optional[str] = None
 
+    # This converts empty strings "" sent from frontend into None (null)
+    # so that Optional[EmailStr] accepts them.
+    @field_validator('guestEmail', 'guestName', 'guestPhone', 'guestCompany', 'guestGst', 'note', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
 # Input for Creation
 class RequirementCreate(RequirementBase):
     pass
