@@ -25,6 +25,7 @@ def create_requirement(
     try:
         # Note: We now access req.scrap_type (snake_case) because of the Schema change
         db_req = BuyerRequirement(
+            scrap_listing_id=req.scrap_listing_id,
             scrap_type=req.scrap_type,
             category=req.category,
             material=req.material,
