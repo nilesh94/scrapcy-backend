@@ -119,3 +119,20 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
             status_code=500, 
             content={"error": "Login failed. Please contact support if the issue persists."}
         )
+
+# --- NEW: VALIDATE TOKEN / ME ENDPOINT ---
+# This is used by the frontend SessionTimeout to keep the session alive
+@router.get("/me")
+def get_current_user_profile(current_user: User = Depends(utils.get_current_user)):
+    """
+    Used by frontend to check if the token is still valid.
+    If valid, returns user info.
+    If expired/invalid, 'get_current_user' dependency raises 401 automatically.
+    """
+    return {
+        "id": current_user.id,
+        "first_name": current_user.first_name,
+        "email": current_user.email,
+        "role": current_user.role,
+        "company_name": current_user.company_name
+    }
