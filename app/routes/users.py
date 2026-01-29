@@ -2,6 +2,7 @@ from datetime import datetime # Required for timestamp
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from pydantic import BaseModel # Added for Refresh Request
 
 # Correct Imports
 from app.database.connection import get_db
@@ -13,6 +14,10 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"]
 )
+
+# --- NEW: Request Model for Refresh ---
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 # --- REGISTER ---
 @router.post("/register", response_model=schemas.UserRegistrationResponse)
@@ -94,12 +99,14 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
             db.rollback() 
         # -----------------------------------
 
-        # 3. Generate Token
+        # 3. Generate Tokens (Access + Refresh)
         access_token = utils.create_access_token(data={"sub": user.email, "role": user.role})
+        refresh_token = utils.create_refresh_token(data={"sub": user.email})
 
         # 4. Return Success
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token, # <--- Sending this to frontend
             "token_type": "bearer",
             "user": {
                 "first_name": user.first_name,
@@ -119,6 +126,41 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
             status_code=500, 
             content={"error": "Login failed. Please contact support if the issue persists."}
         )
+
+# --- NEW: REFRESH TOKEN ENDPOINT ---
+@router.post("/refresh")
+def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """
+    Takes a valid Refresh Token and returns a new Access Token.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    # 1. Verify Signature & Expiry & Type
+    payload = utils.verify_token(request.refresh_token)
+    # Ensure it's valid and specifically a 'refresh' token (not an old access token)
+    if payload is None or payload.get("type") != "refresh":
+        raise credentials_exception
+    
+    email: str = payload.get("sub")
+    if email is None:
+        raise credentials_exception
+
+    # 2. Check if user still exists
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise credentials_exception
+
+    # 3. Issue NEW Access Token
+    new_access_token = utils.create_access_token(data={"sub": user.email, "role": user.role})
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer"
+    }
 
 # --- NEW: VALIDATE TOKEN / ME ENDPOINT ---
 # This is used by the frontend SessionTimeout to keep the session alive
