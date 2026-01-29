@@ -6,6 +6,7 @@ class BuyerRequirement(Base):
 
     id = Column("ID", Integer, primary_key=True, index=True)
     user_id = Column("USER_ID", Integer, ForeignKey("USERS.ID"), nullable=True)
+    scrap_listing_id = Column("SCRAP_LISTING_ID", Integer, nullable=True)
     
     scrap_type = Column("SCRAP_TYPE", String(100))
     category = Column("CATEGORY", String(100))
