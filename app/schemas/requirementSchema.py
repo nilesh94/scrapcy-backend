@@ -4,6 +4,9 @@ from datetime import datetime
 
 # Shared properties
 class RequirementBase(BaseModel):
+    # --- NEW: Add this field ---
+    scrap_listing_id: Optional[int] = Field(default=None, alias="scrapListingId")
+
     # INTERNAL: snake_case (matches DB) | EXTERNAL: camelCase (matches Frontend)
     scrap_type: str = Field(alias="scrapType")
     category: str
@@ -21,10 +24,8 @@ class RequirementBase(BaseModel):
     guest_company: Optional[str] = Field(default=None, alias="guestCompany")
     guest_gst: Optional[str] = Field(default=None, alias="guestGst")
 
-    # CONFIG: Critical for mapping DB objects to this schema
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
-    # VALIDATOR: Convert empty strings to None
     @field_validator('guest_email', 'guest_name', 'guest_phone', 'guest_company', 'guest_gst', 'note', mode='before')
     @classmethod
     def empty_string_to_none(cls, v):
@@ -32,15 +33,12 @@ class RequirementBase(BaseModel):
             return None
         return v
 
-# Input for Creation
 class RequirementCreate(RequirementBase):
     pass
 
-# Input for Status Update
 class RequirementUpdateStatus(BaseModel):
     status: str 
 
-# Output Schema
 class RequirementOut(RequirementBase):
     id: int
     user_id: Optional[int]
