@@ -14,6 +14,7 @@ all_routers = [
     bidding_router,
     payment_router,
     participant_router,
+    admin_router,
 ]
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "bidding_router",
     "payment_router",
     "participant_router",
+    "admin_router",
     "all_routers",
 ]
