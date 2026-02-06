@@ -6,6 +6,7 @@ Export all API routers
 from .auctions import router as auctions_router
 from .bidding import router as bidding_router
 from .payments_participants import payment_router, participant_router
+from .admin_routes import router as admin_router
 
 # Collect all routers
 all_routers = [
