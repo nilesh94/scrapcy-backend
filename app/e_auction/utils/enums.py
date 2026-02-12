@@ -13,7 +13,7 @@ class AuctionStatus(str, Enum):
     LIVE = "LIVE"
     CLOSED = "CLOSED"
     CANCELLED = "CANCELLED"
-
+    ARCHIVED = "ARCHIVED"
 
 class ApprovalStatus(str, Enum):
     """Approval workflow statuses"""
