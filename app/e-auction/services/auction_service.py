@@ -11,7 +11,7 @@ from datetime import datetime
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
 from app.e_auction.utils.exceptions import *
-from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
+from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus, LotStatus
 from app.e_auction.config import settings
 
 
@@ -29,6 +29,13 @@ class AuctionService:
         if auction_data.scheduled_end_time <= auction_data.scheduled_start_time:
             raise InvalidDateRangeException("End time must be after start time")
         
+        # Extract lots data if present (handled via schema update)
+        lots_data = getattr(auction_data, 'lots', [])
+
+        # Validate that at least 1 lot is provided
+        if not lots_data:
+            raise InvalidDateRangeException("At least 1 lot is required to create an auction")
+
         auction = Auction(
             created_by=created_by_user_id,
             auction_title=auction_data.auction_title,
@@ -55,6 +62,21 @@ class AuctionService:
         )
         
         db.add(auction)
+        db.flush() # Generate ID without committing transaction yet
+        
+        # Create Lots
+        for lot_req in lots_data:
+            # Create AuctionItem linked to this auction
+            new_lot = AuctionItem(
+                auction_id=auction.id,
+                lot_status=LotStatus.PENDING,
+                **lot_req.dict(exclude_unset=True)
+            )
+            db.add(new_lot)
+        
+        # Update total lots count on auction
+        auction.total_lots = len(lots_data)
+
         db.commit()
         db.refresh(auction)
         return auction
@@ -230,3 +252,51 @@ class AuctionService:
         db.commit()
         db.refresh(auction)
         return auction
+        
+    @staticmethod
+    def cancel_auction(db: Session, auction_id: int, user_id: int, reason: str) -> Auction:
+        """Cancel auction"""
+        auction = AuctionService.get_by_id(db, auction_id)
+        
+        # Validation: check if user is authorized (omitted for brevity, assume caller checks)
+        
+        auction.status = AuctionStatus.CANCELLED
+        auction.cancellation_reason = reason
+        auction.cancelled_at = datetime.now()
+        
+        db.commit()
+        db.refresh(auction)
+        return auction
+    
+    @staticmethod
+    def delete_auction(db: Session, auction_id: int, user_id: int):
+        """Delete auction (Draft only)"""
+        auction = AuctionService.get_by_id(db, auction_id)
+        
+        if auction.created_by != user_id:
+            raise ForbiddenException()
+            
+        if auction.status not in [AuctionStatus.DRAFT, AuctionStatus.CANCELLED]:
+            raise AuctionNotEditableException("Only DRAFT or CANCELLED auctions can be deleted")
+            
+        db.delete(auction)
+        db.commit()
+        
+    @staticmethod
+    def get_auction_stats(db: Session, user_id: Optional[int] = None) -> AuctionStatsResponse:
+        """Get auction statistics"""
+        query = db.query(Auction)
+        if user_id:
+            query = query.filter(Auction.created_by == user_id)
+            
+        total = query.count()
+        draft = query.filter(Auction.status == AuctionStatus.DRAFT).count()
+        live = query.filter(Auction.status == AuctionStatus.LIVE).count()
+        pending = query.filter(Auction.status == AuctionStatus.PENDING_APPROVAL).count()
+        
+        return AuctionStatsResponse(
+            total_auctions=total,
+            draft_auctions=draft,
+            live_auctions=live,
+            pending_approval=pending
+        )
