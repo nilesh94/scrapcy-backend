@@ -15,7 +15,8 @@ from app.e_auction.models import (
 )
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
 
-from app.e_auction.routes.auth_dependencies import get_current_user, require_admin
+# UPDATED: Pointing to internal auth_dependencies and using RequireAdmin
+from app.e_auction.routes.auth_dependencies import get_current_user, RequireAdmin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 @router.get("/stats")
 async def get_admin_stats(
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Get comprehensive admin statistics for dashboard
@@ -87,7 +88,7 @@ async def get_all_auctions_admin(
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Get all auctions with admin filters
@@ -142,7 +143,7 @@ async def delete_auction(
     reason: str = Body(..., embed=True),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Delete auction with audit trail
@@ -206,7 +207,7 @@ async def archive_auction(
     reason: str = Body(..., embed=True),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Archive auction (soft delete)
@@ -273,7 +274,7 @@ async def restore_auction(
     auction_id: int,
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Restore archived auction to DRAFT status
@@ -325,7 +326,7 @@ async def restore_auction(
 async def get_audit_trail(
     auction_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Get complete audit trail for an auction
@@ -352,7 +353,7 @@ async def get_pending_approvals(
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(RequireAdmin)
 ):
     """
     Get auctions pending approval
