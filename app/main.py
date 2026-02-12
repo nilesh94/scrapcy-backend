@@ -16,11 +16,11 @@ from app.models import scrapCategories as category_models
 from app.models import market_data as market_models
 from app.models import requirements as requirement_models
 
-# ✨ E-AUCTION MODELS (NEW)
+# ✨ E-AUCTION MODELS
 from app.e_auction.models import (
     auction as auction_models,
     auction_item as auction_item_models,
-    # Add other e-auction models if you have them:
+    # Uncomment these as you add the files:
     # bid as bid_models,
     # participant as participant_models,
     # payment as payment_models,
@@ -38,9 +38,10 @@ from app.routes import locations as location_routes
 from app.routes import market_prices as market_price_routes
 from app.routes import requirements as requirement_routes
 
-# ✨ E-AUCTION ROUTERS (NEW)
-from app.e_auction.routes import auction_routes
-from app.e_auction.routes import admin_routes
+# ✨ E-AUCTION ROUTERS (Fixed Imports)
+# Note: We alias them to match your variable names if the filenames are 'auctions.py' and 'admin.py'
+from app.e_auction.routes import auctions as auction_routes
+from app.e_auction.routes import admin as admin_routes
 
 # ============================================================================
 # SETUP LOGGING
@@ -101,18 +102,22 @@ app.include_router(requirement_routes.router)
 # ✨ INCLUDE E-AUCTION ROUTERS (NEW)
 # ============================================================================
 
-# Public Auction Routes (Create, View, Browse)
+# 1. Auction Routes 
+# Removed prefix here because it is ALREADY defined in auctions.py 
+# (prefix="/api/v1/e-auction/auctions")
 app.include_router(
     auction_routes.router,
-    prefix="/api/v1/e-auction",
-    tags=["E-Auction"]
+    # prefix="" <--- Left empty to avoid duplication
+    # tags=["E-Auction"] <--- Tags are already in the router file
 )
 
-# Admin Routes (Manage, Delete, Archive, Audit)
+# 2. Admin Routes
+# Added prefix here because admin.py only defines "/admin"
+# Combined URL: /api/v1/e-auction/admin
 app.include_router(
     admin_routes.router,
-    prefix="/api/v1/e-auction",
-    tags=["E-Auction Admin"]
+    prefix="/api/v1/e-auction", 
+    # tags=["E-Auction Admin"] <--- Tags are already in the router file
 )
 
 # ============================================================================
