@@ -1,12 +1,12 @@
 """
 Audit Log Model
-Add this to: app/e_auction/models/audit_log.py
+File: app/e_auction/models/audit_log.py
 """
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-from app.database.base import Base
+from app.database.connection import Base
 
 
 class AuditLog(Base):
