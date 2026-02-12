@@ -51,7 +51,7 @@ class AuctionNotLiveException(EAuctionException):
         )
 
 
-class AuctionNotApprovedEx ception(EAuctionException):
+class AuctionNotApprovedException(EAuctionException):
     """Auction not approved for publishing"""
     def __init__(self):
         super().__init__(
