@@ -6,6 +6,7 @@ Export all SQLAlchemy models
 from .auction import Auction
 from .auction_item import AuctionItem
 from .bid import Bid
+from .audit_log import AuditLog
 from .participant_watchlist_autobid_payment import (
     AuctionParticipant,
     Watchlist,
@@ -23,6 +24,7 @@ __all__ = [
     "Auction",
     "AuctionItem",
     "Bid",
+    "AuditLog",
     "AuctionParticipant",
     "Watchlist",
     "AutoBid",
