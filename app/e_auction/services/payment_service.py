@@ -68,6 +68,7 @@ class PaymentService:
                 )
                 
                 # Create Razorpay order
+                # 
                 razorpay_order = client.order.create({
                     'amount': int(amount * 100),  # Convert to paise
                     'currency': settings.PAYMENT_CURRENCY,
@@ -244,5 +245,6 @@ class PaymentService:
             total_payments=len(payments),
             total_amount_paid=total_paid,
             total_refunded=total_refunded,
-            payments=[PaymentResponse.from_orm(p) for p in payments]
+            # UPDATED: model_validate for Pydantic V2
+            payments=[PaymentResponse.model_validate(p) for p in payments]
         )
