@@ -1,6 +1,6 @@
 """
 E-Auction Admin Routes
-Add this file to: app/e_auction/routes/admin.py
+Add this file to: app/e_auction/routes/admin_routes.py
 """
 from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session
