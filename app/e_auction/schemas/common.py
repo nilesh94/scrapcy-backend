@@ -3,7 +3,7 @@ Common Pydantic Schemas
 Base models and shared schemas used across the application
 """
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 from decimal import Decimal
 
@@ -96,7 +96,8 @@ class LocationBase(BaseModel):
 class ContactInfo(BaseModel):
     """Contact information"""
     contact_person: Optional[str] = None
-    contact_number: Optional[str] = Field(None, regex=r'^\+?[0-9]{10,15}$')
+    # UPDATED: Changed regex to pattern for Pydantic V2
+    contact_number: Optional[str] = Field(None, pattern=r'^\+?[0-9]{10,15}$')
     contact_email: Optional[str] = None
 
 
