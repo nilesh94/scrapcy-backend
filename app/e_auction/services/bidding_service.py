@@ -201,5 +201,6 @@ class BiddingService:
             winning_bids=winning_bids,
             lost_bids=0,  # Calculate from closed lots
             total_amount_bid=total_amount,
-            bids=[BidDetailResponse.from_orm(b) for b in bids]
+            # UPDATED: model_validate for Pydantic V2
+            bids=[BidDetailResponse.model_validate(b) for b in bids]
         )
