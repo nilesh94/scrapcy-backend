@@ -53,6 +53,8 @@ class AuditLog(Base):
     user_agent = Column(Text)
     
     # Relationships
+    # Note: Ensure the "Auction" and "User" models are also imported or 
+    # discovered by SQLAlchemy to avoid relationship mapping errors.
     auction = relationship("Auction", backref="audit_logs")
     user = relationship("User")
     
