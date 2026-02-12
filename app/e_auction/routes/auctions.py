@@ -65,7 +65,8 @@ async def get_auction_detail(
     Get auction details (public)
     """
     auction = AuctionService.get_by_id(db, auction_id)
-    return AuctionDetailResponse.from_orm(auction)
+    # UPDATED: model_validate is the Pydantic V2 equivalent of from_orm
+    return AuctionDetailResponse.model_validate(auction)
 
 
 # ============================================================================
@@ -124,7 +125,7 @@ async def create_auction(
         created_by_user_id=current_user_id
     )
     
-    return AuctionDetailResponse.from_orm(auction)
+    return AuctionDetailResponse.model_validate(auction)
 
 
 @router.put("/{auction_id}", response_model=AuctionDetailResponse)
@@ -149,7 +150,7 @@ async def update_auction(
         user_id=current_user_id
     )
     
-    return AuctionDetailResponse.from_orm(auction)
+    return AuctionDetailResponse.model_validate(auction)
 
 
 @router.delete("/{auction_id}", status_code=status.HTTP_204_NO_CONTENT)
