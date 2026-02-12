@@ -5,7 +5,7 @@ All endpoints have RBAC placeholders (commented for testing)
 """
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from app.database.connection import get_db
 from app.e_auction.services import BiddingService
@@ -41,7 +41,8 @@ async def get_lot_bid_history(
         page_size=page_size
     )
     
-    return [BidResponse.from_orm(bid) for bid in bids]
+    # UPDATED: model_validate for Pydantic V2
+    return [BidResponse.model_validate(bid) for bid in bids]
 
 
 # ============================================================================
@@ -155,7 +156,7 @@ async def update_auto_bid(
     
     # Verify ownership (commented for testing)
     # if auto_bid.user_id != current_user_id:
-    #     raise HTTPException(status_code=403, detail="Not authorized")
+    #      raise HTTPException(status_code=403, detail="Not authorized")
     
     auto_bid.max_bid_amount = update_request.max_bid_amount
     db.commit()
@@ -194,7 +195,7 @@ async def cancel_auto_bid(
     
     # Verify ownership (commented for testing)
     # if auto_bid.user_id != current_user_id:
-    #     raise HTTPException(status_code=403, detail="Not authorized")
+    #      raise HTTPException(status_code=403, detail="Not authorized")
     
     auto_bid.status = AutoBidStatus.CANCELLED
     db.commit()
@@ -253,7 +254,7 @@ async def get_my_auto_bids(
     return AutoBidListResponse(
         total=len(auto_bids),
         active_count=len(auto_bids),
-        auto_bids=[AutoBidResponse.from_orm(ab) for ab in auto_bids]
+        auto_bids=[AutoBidResponse.model_validate(ab) for ab in auto_bids]
     )
 
 
