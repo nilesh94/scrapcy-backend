@@ -14,7 +14,8 @@ from app.e_auction.models import (
     Payment, Settlement, AuditLog
 )
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
-from app.auth.dependencies import get_current_user, require_admin
+
+from app.e_auction.routes.auth_dependencies import get_current_user, require_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -163,8 +164,8 @@ async def delete_auction(
     audit_log = AuditLog(
         auction_id=auction_id,
         action="DELETED",
-        performed_by=current_user.id,
-        performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.id}",
+        performed_by=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
+        performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.get('id')}",
         reason=reason,
         timestamp=datetime.now(),
         ip_address=request.client.host if request else None,
@@ -174,10 +175,10 @@ async def delete_auction(
     
     # TODO: Send notification to auction creator
     # await send_notification(
-    #     user_id=auction.created_by,
-    #     type="AUCTION_DELETED",
-    #     message=f"Your auction '{auction.auction_title}' has been deleted by admin",
-    #     reason=reason
+    #      user_id=auction.created_by,
+    #      type="AUCTION_DELETED",
+    #      message=f"Your auction '{auction.auction_title}' has been deleted by admin",
+    #      reason=reason
     # )
     
     # Delete related items first (cascade delete)
@@ -190,7 +191,7 @@ async def delete_auction(
     return {
         "message": "Auction deleted successfully",
         "auction_id": auction_id,
-        "deleted_by": current_user.id,
+        "deleted_by": audit_log.performed_by,
         "reason": reason
     }
 
@@ -226,8 +227,8 @@ async def archive_auction(
     audit_log = AuditLog(
         auction_id=auction_id,
         action="ARCHIVED",
-        performed_by=current_user.id,
-        performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.id}",
+        performed_by=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
+        performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.get('id')}",
         changes={
             "status": {
                 "old_value": previous_status,
@@ -247,10 +248,10 @@ async def archive_auction(
     
     # TODO: Send notification
     # await send_notification(
-    #     user_id=auction.created_by,
-    #     type="AUCTION_ARCHIVED",
-    #     message=f"Your auction '{auction.auction_title}' has been archived",
-    #     reason=reason
+    #      user_id=auction.created_by,
+    #      type="AUCTION_ARCHIVED",
+    #      message=f"Your auction '{auction.auction_title}' has been archived",
+    #      reason=reason
     # )
     
     db.commit()
@@ -258,7 +259,7 @@ async def archive_auction(
     return {
         "message": "Auction archived successfully",
         "auction_id": auction_id,
-        "archived_by": current_user.id,
+        "archived_by": audit_log.performed_by,
         "reason": reason
     }
 
@@ -289,8 +290,8 @@ async def restore_auction(
     audit_log = AuditLog(
         auction_id=auction_id,
         action="RESTORED",
-        performed_by=current_user.id,
-        performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.id}",
+        performed_by=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
+        performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.get('id')}",
         changes={
             "status": {
                 "old_value": AuctionStatus.ARCHIVED,
@@ -312,7 +313,7 @@ async def restore_auction(
     return {
         "message": "Auction restored successfully",
         "auction_id": auction_id,
-        "restored_by": current_user.id
+        "restored_by": audit_log.performed_by
     }
 
 
