@@ -14,6 +14,8 @@ from app.e_auction.schemas.common import (
     validate_positive_amount
 )
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus, AuctionType
+# Import Lot schemas to allow nesting
+from app.e_auction.schemas.auction_item import LotCreateRequest, LotDetailResponse
 
 
 # ============================================================================
@@ -52,6 +54,9 @@ class AuctionCreateRequest(BaseModel):
     # Documents
     terms_and_conditions: Optional[str] = None
     auction_doc_url: Optional[str] = Field(None, max_length=500)
+
+    # --- NEW FIELD: Allow creating lots in the same request ---
+    lots: Optional[List[LotCreateRequest]] = Field(default=[], description="List of lots to create immediately")
     
     @validator('scheduled_end_time')
     def end_time_after_start(cls, v, values):
@@ -81,7 +86,15 @@ class AuctionCreateRequest(BaseModel):
                 "enable_extension": True,
                 "inspection_location": "Warehouse A, MIDC Taloja",
                 "inspection_contact_person": "John Doe",
-                "inspection_contact_number": "+919876543210"
+                "inspection_contact_number": "+919876543210",
+                "lots": [
+                    {
+                        "item_name": "Test Lot 1",
+                        "quantity": 100,
+                        "unit": "KG",
+                        "starting_bid_amount": 5000
+                    }
+                ]
             }
         }
 
@@ -263,6 +276,9 @@ class AuctionDetailResponse(BaseModel):
     can_be_edited: bool = False
     requires_emd: bool = False
     requires_registration_fee: bool = False
+
+    # --- NEW FIELD: Return created items in response ---
+    items: Optional[List[LotDetailResponse]] = []
     
     class Config:
         from_attributes = True
