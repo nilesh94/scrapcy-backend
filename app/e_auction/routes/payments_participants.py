@@ -3,7 +3,7 @@ Payment & Participant Routes
 Registration and payment endpoints
 All endpoints have RBAC placeholders (commented for testing)
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -95,7 +95,7 @@ async def register_for_auction(
         emd_amount=emd,
         total_amount_due=total_due,
         payment_required=total_due > 0,
-        payment_order_id=payment_response.order_id if payment_response else None,
+        payment_order_id=payment_response.payment_id if payment_response else None, # Changed order_id to payment_id based on schema
         payment_url=payment_response.payment_url if payment_response else None
     )
 
@@ -121,11 +121,12 @@ async def get_auction_participants(
     total = len(participants)
     approved = sum(1 for p in participants if p.participation_status == "APPROVED" and p.payment_status == "SUCCESS")
     
+    # UPDATED: model_validate for Pydantic V2
     return ParticipantListResponse(
         auction_id=auction_id,
         total_participants=total,
         approved_participants=approved,
-        participants=[ParticipantResponse.from_orm(p) for p in participants]
+        participants=[ParticipantResponse.model_validate(p) for p in participants]
     )
 
 
@@ -230,7 +231,7 @@ async def request_refund(
     
     # Verify ownership (commented for testing)
     # if payment.user_id != current_user_id:
-    #     raise HTTPException(status_code=403, detail="Not authorized")
+    #      raise HTTPException(status_code=403, detail="Not authorized")
     
     return PaymentService.initiate_refund(
         db=db,
