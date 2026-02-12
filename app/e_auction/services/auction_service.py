@@ -148,7 +148,8 @@ class AuctionService:
             page=page,
             page_size=page_size,
             total_pages=(total + page_size - 1) // page_size,
-            auctions=[AuctionBasicResponse.from_orm(a) for a in auctions]
+            # UPDATED: model_validate for Pydantic V2
+            auctions=[AuctionBasicResponse.model_validate(a) for a in auctions]
         )
     
     @staticmethod
