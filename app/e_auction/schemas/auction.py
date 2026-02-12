@@ -49,7 +49,9 @@ class AuctionCreateRequest(BaseModel):
     inspection_end_date: Optional[datetime] = None
     inspection_location: Optional[str] = Field(None, max_length=500)
     inspection_contact_person: Optional[str] = Field(None, max_length=255)
-    inspection_contact_number: Optional[str] = Field(None, regex=r'^\+?[0-9]{10,15}$')
+    
+    # CHANGED: 'regex' -> 'pattern' for Pydantic V2 compatibility
+    inspection_contact_number: Optional[str] = Field(None, pattern=r'^\+?[0-9]{10,15}$')
     
     # Documents
     terms_and_conditions: Optional[str] = None
@@ -119,7 +121,9 @@ class AuctionUpdateRequest(BaseModel):
     inspection_end_date: Optional[datetime] = None
     inspection_location: Optional[str] = Field(None, max_length=500)
     inspection_contact_person: Optional[str] = Field(None, max_length=255)
-    inspection_contact_number: Optional[str] = Field(None, regex=r'^\+?[0-9]{10,15}$')
+    
+    # CHANGED: 'regex' -> 'pattern' for Pydantic V2 compatibility
+    inspection_contact_number: Optional[str] = Field(None, pattern=r'^\+?[0-9]{10,15}$')
     
     terms_and_conditions: Optional[str] = None
     auction_doc_url: Optional[str] = Field(None, max_length=500)
