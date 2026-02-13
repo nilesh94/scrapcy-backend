@@ -2,7 +2,7 @@
 Bid Pydantic Schemas
 Request and Response models for Bidding endpoints
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -17,49 +17,54 @@ class PlaceBidRequest(BaseModel):
     """Request to place a bid"""
     bid_amount: Decimal = Field(..., gt=0, description="Bid amount")
     
-    @validator('bid_amount')
+    @field_validator('bid_amount')
+    @classmethod
     def validate_bid_amount(cls, v):
         if v <= 0:
             raise ValueError('Bid amount must be greater than zero')
         # Additional validation (increment, minimum) done in service layer
         return v
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "bid_amount": 26000.00
             }
         }
+    }
 
 
 class AutoBidCreateRequest(BaseModel):
     """Request to create auto-bid (proxy bidding)"""
     max_bid_amount: Decimal = Field(..., gt=0, description="Maximum bid amount (ceiling)")
     
-    @validator('max_bid_amount')
+    @field_validator('max_bid_amount')
+    @classmethod
     def validate_max_bid(cls, v):
         if v <= 0:
             raise ValueError('Maximum bid amount must be greater than zero')
         return v
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "max_bid_amount": 50000.00
             }
         }
+    }
 
 
 class AutoBidUpdateRequest(BaseModel):
     """Request to update auto-bid"""
     max_bid_amount: Decimal = Field(..., gt=0, description="New maximum bid amount")
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "max_bid_amount": 75000.00
             }
         }
+    }
 
 
 class BidFilterParams(BaseModel):
@@ -102,8 +107,9 @@ class BidResponse(BaseModel):
     ip_address: Optional[str] = None
     device_info: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class BidDetailResponse(BaseModel):
@@ -129,8 +135,9 @@ class BidDetailResponse(BaseModel):
     is_active: bool = False
     is_outbid: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class BidHistoryResponse(BaseModel):
@@ -174,8 +181,8 @@ class BidSuccessResponse(BaseModel):
     # Next bid info
     min_next_bid: Decimal
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "success": True,
                 "message": "Bid placed successfully",
@@ -186,6 +193,7 @@ class BidSuccessResponse(BaseModel):
                 "min_next_bid": 27000.00
             }
         }
+    }
 
 
 class BidRejectedResponse(BaseModel):
@@ -196,8 +204,8 @@ class BidRejectedResponse(BaseModel):
     current_highest_bid: Optional[Decimal] = None
     min_required_bid: Optional[Decimal] = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "success": False,
                 "error": "Bid amount too low",
@@ -206,6 +214,7 @@ class BidRejectedResponse(BaseModel):
                 "min_required_bid": 26500.00
             }
         }
+    }
 
 
 # ============================================================================
@@ -231,8 +240,9 @@ class AutoBidResponse(BaseModel):
     has_budget_remaining: bool = False
     budget_remaining: Optional[Decimal] = None
     
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class AutoBidListResponse(BaseModel):
@@ -250,8 +260,8 @@ class AutoBidSuccessResponse(BaseModel):
     max_bid_amount: Decimal
     current_highest_bid: Optional[Decimal] = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "success": True,
                 "message": "Auto-bid activated successfully",
@@ -260,6 +270,7 @@ class AutoBidSuccessResponse(BaseModel):
                 "current_highest_bid": 26000.00
             }
         }
+    }
 
 
 class CancelAutoBidRequest(BaseModel):
@@ -307,8 +318,9 @@ class LotBidSummary(BaseModel):
     user_is_winning: bool = False
     user_has_auto_bid: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 # ============================================================================
@@ -339,8 +351,8 @@ class BidUpdateMessage(BaseModel):
     winning_user_id: Optional[int] = None  # Only sent to the winner
     is_current_user_winning: bool = False
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "event_type": "BID_PLACED",
                 "auction_item_id": 456,
@@ -352,3 +364,4 @@ class BidUpdateMessage(BaseModel):
                 "is_current_user_winning": False
             }
         }
+    }
