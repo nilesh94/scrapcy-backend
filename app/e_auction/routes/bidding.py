@@ -55,7 +55,7 @@ async def place_bid(
     bid_request: PlaceBidRequest,
     request: Request,
     # ==== RBAC: Only BUYER or ADMIN can bid ====
-    # current_user: dict = RequireBuyer,  # Uncomment when auth ready
+    current_user: dict = RequireBuyer,  # Uncomment when auth ready
     current_user_id: int = Depends(get_current_user_id),  # Testing only
     db: Session = Depends(get_db)
 ):
