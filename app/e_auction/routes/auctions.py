@@ -110,7 +110,7 @@ async def list_my_auctions(
 async def create_auction(
     auction_data: AuctionCreateRequest,
     # ==== RBAC: Only SELLER or ADMIN can create ====
-    # current_user: dict = RequireSeller,  # Uncomment when auth ready
+    current_user: dict = RequireSeller,
     current_user_id: int = Depends(get_current_user_id),  # Testing only
     db: Session = Depends(get_db)
 ):
