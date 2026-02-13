@@ -3,7 +3,7 @@ Bidding Routes
 API endpoints for bidding operations
 All endpoints have RBAC placeholders (commented for testing)
 """
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
@@ -55,8 +55,7 @@ async def place_bid(
     bid_request: PlaceBidRequest,
     request: Request,
     # ==== RBAC: Only BUYER or ADMIN can bid ====
-    current_user: dict = RequireBuyer,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireBuyer),
     db: Session = Depends(get_db)
 ):
     """
@@ -74,10 +73,13 @@ async def place_bid(
     ip_address = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "")
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     bid = BiddingService.place_bid(
         db=db,
         auction_item_id=lot_id,
-        user_id=current_user_id,
+        user_id=user_id,
         bid_amount=bid_request.bid_amount,
         ip_address=ip_address,
         device_info=user_agent
@@ -103,8 +105,7 @@ async def create_auto_bid(
     lot_id: int,
     auto_bid_request: AutoBidCreateRequest,
     # ==== RBAC: Only BUYER or ADMIN ====
-    # current_user: dict = RequireBuyer,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireBuyer),
     db: Session = Depends(get_db)
 ):
     """
@@ -114,10 +115,13 @@ async def create_auto_bid(
     
     System will automatically bid up to max_bid_amount
     """
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     auto_bid = BiddingService.create_auto_bid(
         db=db,
         auction_item_id=lot_id,
-        user_id=current_user_id,
+        user_id=user_id,
         max_bid_amount=auto_bid_request.max_bid_amount
     )
     
@@ -139,8 +143,7 @@ async def update_auto_bid(
     auto_bid_id: int,
     update_request: AutoBidUpdateRequest,
     # ==== RBAC: Only bid owner ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -150,13 +153,16 @@ async def update_auto_bid(
     """
     from app.e_auction.models import AutoBid, AuctionItem
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     auto_bid = db.query(AutoBid).filter(AutoBid.id == auto_bid_id).first()
     if not auto_bid:
         raise HTTPException(status_code=404, detail="Auto-bid not found")
     
-    # Verify ownership (commented for testing)
-    # if auto_bid.user_id != current_user_id:
-    #      raise HTTPException(status_code=403, detail="Not authorized")
+    # Verify ownership
+    if auto_bid.user_id != user_id:
+         raise HTTPException(status_code=403, detail="Not authorized")
     
     auto_bid.max_bid_amount = update_request.max_bid_amount
     db.commit()
@@ -177,8 +183,7 @@ async def update_auto_bid(
 async def cancel_auto_bid(
     auto_bid_id: int,
     # ==== RBAC: Only bid owner ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -189,13 +194,16 @@ async def cancel_auto_bid(
     from app.e_auction.models import AutoBid
     from app.e_auction.utils.enums import AutoBidStatus
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     auto_bid = db.query(AutoBid).filter(AutoBid.id == auto_bid_id).first()
     if not auto_bid:
         raise HTTPException(status_code=404, detail="Auto-bid not found")
     
-    # Verify ownership (commented for testing)
-    # if auto_bid.user_id != current_user_id:
-    #      raise HTTPException(status_code=403, detail="Not authorized")
+    # Verify ownership
+    if auto_bid.user_id != user_id:
+         raise HTTPException(status_code=403, detail="Not authorized")
     
     auto_bid.status = AutoBidStatus.CANCELLED
     db.commit()
@@ -212,8 +220,7 @@ async def get_my_bids(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -221,9 +228,12 @@ async def get_my_bids(
     
     RBAC: Requires authentication
     """
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     return BiddingService.get_my_bids(
         db=db,
-        user_id=current_user_id,
+        user_id=user_id,
         page=page,
         page_size=page_size
     )
@@ -232,8 +242,7 @@ async def get_my_bids(
 @router.get("/my-auto-bids", response_model=AutoBidListResponse)
 async def get_my_auto_bids(
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -244,9 +253,12 @@ async def get_my_auto_bids(
     from app.e_auction.models import AutoBid
     from sqlalchemy import and_
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     auto_bids = db.query(AutoBid).filter(
         and_(
-            AutoBid.user_id == current_user_id,
+            AutoBid.user_id == user_id,
             AutoBid.status == "ACTIVE"
         )
     ).all()
@@ -262,8 +274,7 @@ async def get_my_auto_bids(
 async def get_lot_bid_summary(
     lot_id: int,
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -274,23 +285,26 @@ async def get_lot_bid_summary(
     from app.e_auction.models import AuctionItem, Bid, AutoBid
     from sqlalchemy import func, and_
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
     
     # User's highest bid
     user_highest = db.query(func.max(Bid.bid_amount)).filter(
-        and_(Bid.auction_item_id == lot_id, Bid.user_id == current_user_id)
+        and_(Bid.auction_item_id == lot_id, Bid.user_id == user_id)
     ).scalar()
     
     # Check if user is winning
-    is_winning = lot.winner_user_id == current_user_id if lot.winner_user_id else False
+    is_winning = lot.winner_user_id == user_id if lot.winner_user_id else False
     
     # Check if has auto-bid
     has_auto_bid = db.query(AutoBid).filter(
         and_(
             AutoBid.auction_item_id == lot_id,
-            AutoBid.user_id == current_user_id,
+            AutoBid.user_id == user_id,
             AutoBid.status == "ACTIVE"
         )
     ).first() is not None
@@ -314,8 +328,7 @@ async def get_lot_bid_summary(
 @router.get("/stats/my-bidding", response_model=BidStatsResponse)
 async def get_my_bidding_stats(
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -327,22 +340,25 @@ async def get_my_bidding_stats(
     from sqlalchemy import func, and_
     from decimal import Decimal
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     # Total bids
-    total_bids = db.query(func.count(Bid.id)).filter(Bid.user_id == current_user_id).scalar()
+    total_bids = db.query(func.count(Bid.id)).filter(Bid.user_id == user_id).scalar()
     
     # Total amount bid
     total_amount = db.query(func.sum(Bid.bid_amount)).filter(
-        Bid.user_id == current_user_id
+        Bid.user_id == user_id
     ).scalar() or Decimal('0.00')
     
     # Active bids (winning)
     active_bids = db.query(func.count(Bid.id)).filter(
-        and_(Bid.user_id == current_user_id, Bid.is_winning_bid == 1)
+        and_(Bid.user_id == user_id, Bid.is_winning_bid == 1)
     ).scalar()
     
     # Active auto-bids
     active_auto_bids = db.query(func.count(AutoBid.id)).filter(
-        and_(AutoBid.user_id == current_user_id, AutoBid.status == "ACTIVE")
+        and_(AutoBid.user_id == user_id, AutoBid.status == "ACTIVE")
     ).scalar()
     
     return BidStatsResponse(
