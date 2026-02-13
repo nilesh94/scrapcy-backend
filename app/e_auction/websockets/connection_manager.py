@@ -3,7 +3,7 @@ WebSocket Connection Manager
 Real-time bidding updates for auctions
 """
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 import json
 import logging
 from datetime import datetime
@@ -96,10 +96,12 @@ class ConnectionManager:
         if lot_id not in self.active_connections:
             return
         
-        message_dict = message.dict()
+        # UPDATED: model_dump() for Pydantic V2
+        message_dict = message.model_dump()
         dead_connections = []
         
-        for user_id, connections in self.active_connections[lot_id].items():
+        # Iterate over a copy of the dictionary items to avoid RuntimeError during cleanup
+        for user_id, connections in list(self.active_connections[lot_id].items()):
             # Skip excluded user
             if exclude_user_id and user_id == exclude_user_id:
                 continue
@@ -122,7 +124,8 @@ class ConnectionManager:
         
         dead_connections = []
         
-        for lot_id in self.user_lots[user_id]:
+        # Iterate over a copy of the set to avoid modification errors
+        for lot_id in list(self.user_lots[user_id]):
             if lot_id in self.active_connections and user_id in self.active_connections[lot_id]:
                 for websocket in self.active_connections[lot_id][user_id]:
                     try:
@@ -147,7 +150,7 @@ class ConnectionManager:
         
         dead_connections = []
         
-        for user_id, connections in self.active_connections[lot_id].items():
+        for user_id, connections in list(self.active_connections[lot_id].items()):
             for websocket in connections:
                 try:
                     await websocket.send_json(heartbeat)
