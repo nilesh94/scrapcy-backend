@@ -41,7 +41,7 @@ from app.routes import requirements as requirement_routes
 # ✨ E-AUCTION ROUTERS (Fixed Imports)
 # Note: We alias them to match your variable names if the filenames are 'auctions.py' and 'admin.py'
 from app.e_auction.routes import auctions as auction_routes
-from app.e_auction.routes import admin as admin_routes
+from app.e_auction.routes import admin_routes as admin_routes
 
 # ============================================================================
 # SETUP LOGGING
