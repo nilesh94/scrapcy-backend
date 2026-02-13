@@ -1,5 +1,6 @@
 """
 Additional Models: Participant, Watchlist, AutoBid, Payment
+Mapped to SCRAPCY_APP schema
 """
 from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, CLOB, ForeignKey
 from sqlalchemy.orm import relationship
