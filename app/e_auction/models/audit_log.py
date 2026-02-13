@@ -2,8 +2,9 @@
 Audit Log Model
 File: app/e_auction/models/audit_log.py
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, CLOB, TIMESTAMP, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from datetime import datetime
 
 from app.database.connection import Base
@@ -14,48 +15,49 @@ class AuditLog(Base):
     Audit trail for all auction-related actions
     Tracks who did what, when, why, and how
     """
-    __tablename__ = "auction_audit_logs"
+    __tablename__ = "AUCTION_AUDIT_LOGS"
+    __table_args__ = {'schema': 'SCRAPCY_APP'}
     
     # Primary key
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column("ID", Integer, primary_key=True, index=True)
     
     # Which auction
-    auction_id = Column(Integer, ForeignKey("auctions.id", ondelete="CASCADE"), nullable=False, index=True)
+    auction_id = Column("AUCTION_ID", Integer, ForeignKey("SCRAPCY_APP.AUCTIONS.ID", ondelete="CASCADE"), nullable=False, index=True)
     
     # What action
-    action = Column(String(50), nullable=False, index=True)
+    action = Column("ACTION", String(50), nullable=False, index=True)
     # Examples: CREATED, UPDATED, DELETED, ARCHIVED, RESTORED,
-    #           SUBMITTED, APPROVED_L1, APPROVED_L2, REJECTED,
-    #           PUBLISHED, CLOSED, CANCELLED
+    #            SUBMITTED, APPROVED_L1, APPROVED_L2, REJECTED,
+    #            PUBLISHED, CLOSED, CANCELLED
     
-    action_type = Column(String(50))  # Optional: UPDATE_FIELD, APPROVAL, STATUS_CHANGE
+    action_type = Column("ACTION_TYPE", String(50))  # Optional: UPDATE_FIELD, APPROVAL, STATUS_CHANGE
     
     # Who performed the action
-    performed_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    performed_by_name = Column(String(255))  # Cache name for faster display
+    performed_by = Column("PERFORMED_BY", Integer, nullable=False, index=True)
+    performed_by_name = Column("PERFORMED_BY_NAME", String(255))  # Cache name for faster display
     
     # When
-    timestamp = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    timestamp = Column("TIMESTAMP", TIMESTAMP(6), default=datetime.now, nullable=False, index=True)
     
     # What changed (JSON format)
-    changes = Column(JSON)
+    changes = Column("CHANGES", CLOB)
     # Format: {"field_name": {"old_value": "x", "new_value": "y"}}
     # Example: {"status": {"old_value": "DRAFT", "new_value": "LIVE"}}
     
     # Why (required for DELETE, ARCHIVE, REJECT)
-    reason = Column(Text)
+    reason = Column("REASON", CLOB)
     
     # Additional remarks
-    remarks = Column(Text)
+    remarks = Column("REMARKS", CLOB)
     
     # Metadata for security/compliance
-    ip_address = Column(String(50))
-    user_agent = Column(Text)
+    ip_address = Column("IP_ADDRESS", String(50))
+    user_agent = Column("USER_AGENT", CLOB)
     
     # Relationships
     # Note: Ensure the "Auction" and "User" models are also imported or 
     # discovered by SQLAlchemy to avoid relationship mapping errors.
-    auction = relationship("Auction", backref="audit_logs")
+    auction = relationship("Auction", back_populates="audit_logs")
     user = relationship("User")
     
     def __repr__(self):
