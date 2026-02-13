@@ -28,7 +28,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 @router.get("/stats")
 async def get_admin_stats(
     db: Session = Depends(get_db),
-    current_user = RequireAdmin
+    current_user = Depends(RequireAdmin)
 ):
     """
     Get comprehensive admin statistics for dashboard
