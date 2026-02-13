@@ -79,8 +79,7 @@ async def list_my_auctions(
     page_size: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     # ==== RBAC: Requires authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -98,7 +97,7 @@ async def list_my_auctions(
         filters=filters,
         page=page,
         page_size=page_size,
-        user_id=current_user_id
+        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
     )
 
 
@@ -110,8 +109,7 @@ async def list_my_auctions(
 async def create_auction(
     auction_data: AuctionCreateRequest,
     # ==== RBAC: Only SELLER or ADMIN can create ====
-    current_user: dict = RequireSeller,
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireSeller),
     db: Session = Depends(get_db)
 ):
     """
@@ -122,7 +120,7 @@ async def create_auction(
     auction = AuctionService.create_auction(
         db=db,
         auction_data=auction_data,
-        created_by_user_id=current_user_id
+        created_by_user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
     )
     
     return AuctionDetailResponse.model_validate(auction)
@@ -133,8 +131,7 @@ async def update_auction(
     auction_id: int,
     auction_data: AuctionUpdateRequest,
     # ==== RBAC: Only auction creator can update ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -147,7 +144,7 @@ async def update_auction(
         db=db,
         auction_id=auction_id,
         auction_data=auction_data,
-        user_id=current_user_id
+        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
     )
     
     return AuctionDetailResponse.model_validate(auction)
@@ -157,8 +154,7 @@ async def update_auction(
 async def delete_auction(
     auction_id: int,
     # ==== RBAC: Only auction creator can delete ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -169,7 +165,7 @@ async def delete_auction(
     AuctionService.delete_auction(
         db=db,
         auction_id=auction_id,
-        user_id=current_user_id
+        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
     )
     
     return None
@@ -179,8 +175,7 @@ async def delete_auction(
 async def submit_auction_for_approval(
     auction_id: int,
     # ==== RBAC: Only auction creator ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -191,7 +186,7 @@ async def submit_auction_for_approval(
     auction = AuctionService.submit_for_approval(
         db=db,
         auction_id=auction_id,
-        user_id=current_user_id
+        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
     )
     
     return AuctionActionResponse(
@@ -208,8 +203,7 @@ async def cancel_auction(
     auction_id: int,
     request: CancelAuctionRequest,
     # ==== RBAC: Only auction creator or admin ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -220,7 +214,7 @@ async def cancel_auction(
     auction = AuctionService.cancel_auction(
         db=db,
         auction_id=auction_id,
-        user_id=current_user_id,
+        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
         reason=request.cancellation_reason
     )
     
@@ -241,7 +235,7 @@ async def get_pending_auctions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     # ==== RBAC: Only L1/L2 approvers or admins ====
-    # current_user: dict = RequireAdmin,  # Uncomment when auth ready
+    current_user: dict = Depends(RequireAdmin),
     db: Session = Depends(get_db)
 ):
     """
@@ -266,8 +260,7 @@ async def approve_auction_l1(
     auction_id: int,
     request: AuctionApprovalRequest,
     # ==== RBAC: Only L1 approvers or admins ====
-    # current_user: dict = RequireL1Approver,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireL1Approver),
     db: Session = Depends(get_db)
 ):
     """
@@ -278,7 +271,7 @@ async def approve_auction_l1(
     auction = AuctionService.approve_l1(
         db=db,
         auction_id=auction_id,
-        approver_id=current_user_id,
+        approver_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
         remarks=request.remarks,
         approve=request.approve
     )
@@ -296,8 +289,7 @@ async def approve_auction_l2(
     auction_id: int,
     request: AuctionApprovalRequest,
     # ==== RBAC: Only L2 approvers or admins ====
-    # current_user: dict = RequireL2Approver,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireL2Approver),
     db: Session = Depends(get_db)
 ):
     """
@@ -308,7 +300,7 @@ async def approve_auction_l2(
     auction = AuctionService.approve_l2(
         db=db,
         auction_id=auction_id,
-        approver_id=current_user_id,
+        approver_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
         remarks=request.remarks,
         approve=request.approve
     )
@@ -326,8 +318,7 @@ async def approve_auction_l2(
 async def publish_auction_manually(
     auction_id: int,
     # ==== RBAC: Only admins ====
-    # current_user: dict = RequireAdmin,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAdmin),
     db: Session = Depends(get_db)
 ):
     """
@@ -356,8 +347,7 @@ async def publish_auction_manually(
 @router.get("/stats/overview", response_model=AuctionStatsResponse)
 async def get_auction_statistics(
     # ==== RBAC: Authenticated user for their stats ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -365,13 +355,16 @@ async def get_auction_statistics(
     
     RBAC: Requires authentication
     """
-    return AuctionService.get_auction_stats(db=db, user_id=current_user_id)
+    return AuctionService.get_auction_stats(
+        db=db, 
+        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
+    )
 
 
 @router.get("/admin/stats/all", response_model=AuctionStatsResponse)
 async def get_all_auction_statistics(
     # ==== RBAC: Only admins can see all stats ====
-    # current_user: dict = RequireAdmin,  # Uncomment when auth ready
+    current_user: dict = Depends(RequireAdmin),
     db: Session = Depends(get_db)
 ):
     """
