@@ -27,8 +27,7 @@ async def register_for_auction(
     auction_id: int,
     registration_data: AuctionRegistrationRequest,
     # ==== RBAC: Authenticated buyer ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -42,6 +41,9 @@ async def register_for_auction(
     from sqlalchemy import and_
     from decimal import Decimal
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+    
     # Get auction
     auction = db.query(Auction).filter(Auction.id == auction_id).first()
     if not auction:
@@ -51,7 +53,7 @@ async def register_for_auction(
     existing = db.query(AuctionParticipant).filter(
         and_(
             AuctionParticipant.auction_id == auction_id,
-            AuctionParticipant.user_id == current_user_id
+            AuctionParticipant.user_id == user_id
         )
     ).first()
     
@@ -61,7 +63,7 @@ async def register_for_auction(
     # Create participant
     participant = AuctionParticipant(
         auction_id=auction_id,
-        user_id=current_user_id,
+        user_id=user_id,
         agreed_to_terms=registration_data.agreed_to_terms,
         participation_status="APPROVED"  # Auto-approved for now
     )
@@ -80,7 +82,7 @@ async def register_for_auction(
     if total_due > 0:
         payment_response = PaymentService.initiate_payment(
             db=db,
-            user_id=current_user_id,
+            user_id=user_id,
             payment_type=PaymentType.EMD,  # Combined payment
             amount=total_due,
             auction_id=auction_id
@@ -104,7 +106,7 @@ async def register_for_auction(
 async def get_auction_participants(
     auction_id: int,
     # ==== RBAC: Only auction creator or admin ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -138,8 +140,7 @@ async def get_auction_participants(
 async def initiate_payment(
     payment_request: PaymentInitiateRequest,
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -147,9 +148,12 @@ async def initiate_payment(
     
     RBAC: Requires authentication
     """
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     return PaymentService.initiate_payment(
         db=db,
-        user_id=current_user_id,
+        user_id=user_id,
         payment_type=payment_request.payment_type,
         amount=payment_request.amount,
         auction_id=payment_request.auction_id,
@@ -161,8 +165,7 @@ async def initiate_payment(
 async def verify_payment(
     verify_request: PaymentVerifyRequest,
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -193,8 +196,7 @@ async def get_payment_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     # ==== RBAC: Authenticated user ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -202,9 +204,12 @@ async def get_payment_history(
     
     RBAC: Requires authentication
     """
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     return PaymentService.get_payment_history(
         db=db,
-        user_id=current_user_id,
+        user_id=user_id,
         page=page,
         page_size=page_size
     )
@@ -214,8 +219,7 @@ async def get_payment_history(
 async def request_refund(
     refund_request: RefundRequest,
     # ==== RBAC: Authenticated user or admin ====
-    # current_user: dict = RequireAuth,  # Uncomment when auth ready
-    current_user_id: int = Depends(get_current_user_id),  # Testing only
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
@@ -225,13 +229,16 @@ async def request_refund(
     """
     from app.e_auction.models import Payment
     
+    # Get ID from model attribute or dict key
+    user_id = getattr(current_user, "id", None) or current_user.get("id")
+
     payment = db.query(Payment).filter(Payment.id == refund_request.payment_id).first()
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
     
-    # Verify ownership (commented for testing)
-    # if payment.user_id != current_user_id:
-    #      raise HTTPException(status_code=403, detail="Not authorized")
+    # Verify ownership
+    if payment.user_id != user_id:
+         raise HTTPException(status_code=403, detail="Not authorized")
     
     return PaymentService.initiate_refund(
         db=db,
