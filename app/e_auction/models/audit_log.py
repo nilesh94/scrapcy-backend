@@ -33,7 +33,8 @@ class AuditLog(Base):
     action_type = Column("ACTION_TYPE", String(50))  # Optional: UPDATE_FIELD, APPROVAL, STATUS_CHANGE
     
     # Who performed the action
-    performed_by = Column("PERFORMED_BY", Integer, nullable=False, index=True)
+
+    performed_by = Column("PERFORMED_BY", Integer, ForeignKey("USERS.ID"), nullable=False, index=True)
     performed_by_name = Column("PERFORMED_BY_NAME", String(255))  # Cache name for faster display
     
     # When
@@ -58,6 +59,7 @@ class AuditLog(Base):
     # Note: Ensure the "Auction" and "User" models are also imported or 
     # discovered by SQLAlchemy to avoid relationship mapping errors.
     auction = relationship("Auction", back_populates="audit_logs")
+    
     user = relationship("User")
     
     def __repr__(self):
