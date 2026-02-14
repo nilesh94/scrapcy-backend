@@ -88,6 +88,8 @@ class Auction(Base):
     bids = relationship("Bid", back_populates="auction")
     payments = relationship("Payment", back_populates="auction")
     settlements = relationship("Settlement", back_populates="auction")
+    # ABSOLUTELY REQUIRED FIX: Added the matching audit_logs relationship
+    audit_logs = relationship("AuditLog", back_populates="auction", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Auction(id={self.id}, title='{self.auction_title}', status='{self.status}')>"
