@@ -31,25 +31,33 @@ async def get_current_user_id(
     
     try:
         # Extract token from "Bearer <token>"
-        token = authorization.split(" ")[1]
+        parts = authorization.split(" ")
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Authorization header format. Expected 'Bearer <token>'"
+            )
+        token = parts[1]
         
         # Verify JWT and extract user_id
         from app.auth.jwt_handler import verify_token
         payload = verify_token(token)
-        user_id = payload.get("user_id")
+        
+        # Security Note: We check multiple common keys to ensure compatibility with your JWT handler
+        user_id = payload.get("user_id") or payload.get("id") or payload.get("sub")
         
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="User identity could not be verified from token"
             )
         
-        return user_id
+        return int(user_id)
     
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
+            detail="Invalid or expired session. Please log in again."
         )
     # ==== END COMMENTED SECTION ====
     
@@ -67,30 +75,25 @@ async def get_current_user(
     TODO: Uncomment when User model is integrated
     """
     # ==== COMMENTED FOR TESTING - UNCOMMENT WHEN AUTH READY ====
-    from app.models.user import User
+    from app.models.users import User
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="User record not found"
         )
     
-    if not user.is_active:
+    # Safety Check: Oracle 0/1 to Boolean conversion
+    is_active = getattr(user, "is_active", 1)
+    if is_active == 0 or is_active is False:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive"
+            detail="User account is deactivated"
         )
     
     return user
     # ==== END COMMENTED SECTION ====
-    
-    # TESTING ONLY
-    # return {
-    #     "id": user_id,
-    #     "role": "SELLER",  # Mock role
-    #     "is_active": True
-    # }
 
 
 # ============================================================================
@@ -110,7 +113,8 @@ class RoleChecker:
     """
     
     def __init__(self, allowed_roles: list):
-        self.allowed_roles = allowed_roles
+        # SECURITY: Store as uppercase to prevent case-bypass attacks
+        self.allowed_roles = [role.upper() for role in allowed_roles]
     
     async def __call__(
         self,
@@ -120,12 +124,20 @@ class RoleChecker:
         
         # ==== COMMENTED FOR TESTING - UNCOMMENT WHEN AUTH READY ====
         # Support both SQLAlchemy objects and dictionaries
-        user_role = getattr(current_user, "role", None) or current_user.get("role")
+        user_role_raw = getattr(current_user, "role", None) or current_user.get("role")
+        
+        if not user_role_raw:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User has no assigned role"
+            )
+
+        user_role = str(user_role_raw).upper()
         
         if user_role not in self.allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Required roles: {', '.join(self.allowed_roles)}"
+                detail=f"Security access denied. This action requires one of the following roles: {', '.join(self.allowed_roles)}"
             )
         # ==== END COMMENTED SECTION ====
         
@@ -141,8 +153,8 @@ async def verify_auction_owner(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> bool:
-    """Verify user is the auction creator"""
-    from app.e_auction.models import Auction
+    """Verify user is the auction creator or has Administrative override"""
+    from app.e_auction.models.auction import Auction
     
     auction = db.query(Auction).filter(Auction.id == auction_id).first()
     if not auction:
@@ -151,89 +163,43 @@ async def verify_auction_owner(
             detail="Auction not found"
         )
     
-    # ==== COMMENTED FOR TESTING - UNCOMMENT WHEN AUTH READY ====
     user_id = getattr(current_user, "id", None) or current_user.get("id")
+    user_role = str(getattr(current_user, "role", "") or "").upper()
+
+    # SECURITY: Admins can manage any auction, but Sellers can only manage their own
+    if user_role == "ADMIN":
+        return True
+
     if auction.created_by != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only auction creator can perform this action"
+            detail="Access Denied: You do not own this auction record"
         )
-    # ==== END COMMENTED SECTION ====
     
     return True
 
 
 # ============================================================================
-# COMMON DEPENDENCIES
+# COMMON DEPENDENCIES (Security Hardened)
 # ============================================================================
 
 # FIX: Removed pre-wrapped Depends() to fix "not a callable object" TypeError
-# Use these as `Depends(RequireAdmin)` in your route files.
 
-# For seller-only endpoints
-RequireSeller = RoleChecker(["SELLER", "ADMIN"])
+# SECURITY: We explicitly list roles. 
+# If you want an Admin to be able to create an auction for testing/support:
+RequireSeller = RoleChecker(["SELLER", "ADMIN"]) 
 
-# For buyer-only endpoints
+# For buyer-only endpoints (Admins usually need to see what buyers see for support)
 RequireBuyer = RoleChecker(["BUYER", "ADMIN"])
 
-# For admin-only endpoints
+# For admin-only endpoints (STRICT: Sellers cannot access these)
 RequireAdmin = RoleChecker(["ADMIN"])
 
-# For L1 approver
+# For L1 approver (Strict workflow)
 RequireL1Approver = RoleChecker(["L1_APPROVER", "ADMIN"])
 
-# For L2 approver
+# For L2 approver (Strict workflow)
 RequireL2Approver = RoleChecker(["L2_APPROVER", "ADMIN"])
 
 # Any authenticated user
 RequireAuth = get_current_user
-
-
-# ============================================================================
-# USAGE EXAMPLES (in routes)
-# ============================================================================
-
-"""
-# Example 1: Public endpoint (no auth required)
-@router.get("/auctions/browse")
-async def browse_auctions():
-    # Anyone can access
-    pass
-
-# Example 2: Authenticated user (any role)
-@router.get("/my-bids")
-async def get_my_bids(
-    current_user: dict = Depends(RequireAuth)  # Just need to be logged in
-):
-    pass
-
-# Example 3: Seller only
-@router.post("/auctions")
-async def create_auction(
-    current_user: dict = Depends(RequireSeller)  # Only SELLER or ADMIN
-):
-    pass
-
-# Example 4: Admin only
-@router.post("/admin/approve")
-async def approve_auction(
-    current_user: dict = Depends(RequireAdmin)  # Only ADMIN
-):
-    pass
-
-# Example 5: Multiple roles
-@router.post("/bid")
-async def place_bid(
-    current_user: dict = Depends(RequireBuyer)  # Only BUYER or ADMIN
-):
-    pass
-
-# Example 6: Custom permission check
-@router.put("/auctions/{auction_id}")
-async def update_auction(
-    auction_id: int,
-    current_user: dict = Depends(RequireAuth),
-    is_owner: bool = Depends(verify_auction_owner)  # Custom check
-):
-    pass
-"""
