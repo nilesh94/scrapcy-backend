@@ -3,11 +3,14 @@ Authentication & Authorization Dependencies
 Role-based access control (RBAC) helpers
 Currently COMMENTED for testing - uncomment when auth is ready
 """
+import logging
 from typing import Optional, Union
 from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 
+# Initialize logger to see exactly where the failure happens in Render logs
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CURRENT USER DEPENDENCY (for testing)
@@ -57,6 +60,8 @@ async def get_current_user_id(
         return identity
     
     except Exception as e:
+        # ABSOLUTELY REQUIRED: Log the actual error to Render console so we can see it
+        logger.error(f"JWT Verification Failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session. Please log in again."
@@ -83,17 +88,27 @@ async def get_current_user(
     if isinstance(identity, str) and "@" in identity:
         user = db.query(User).filter(User.email == identity).first()
     else:
-        user = db.query(User).filter(User.id == identity).first()
+        # Safety check for integer conversion from token strings
+        try:
+            lookup_id = int(identity)
+            user = db.query(User).filter(User.id == lookup_id).first()
+        except (ValueError, TypeError):
+            user = None
 
     if not user:
+        logger.error(f"User Lookup Failed: No user found for identity {identity}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User record not found"
         )
     
     # Safety Check: Oracle 0/1 to Boolean conversion
-    is_active = getattr(user, "is_active", 1)
-    if is_active == 0 or is_active is False:
+    # UPDATED: We use a more robust check for Oracle Number types
+    is_active_val = getattr(user, "is_active", 1)
+    
+    # Strictly check for 0. If it's 1 or None (if DB allows), let them in.
+    if is_active_val == 0:
+        logger.warning(f"Access Denied: User {user.email} is_active is 0")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is deactivated"
