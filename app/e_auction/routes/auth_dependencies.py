@@ -3,7 +3,7 @@ Authentication & Authorization Dependencies
 Role-based access control (RBAC) helpers
 Currently COMMENTED for testing - uncomment when auth is ready
 """
-from typing import Optional
+from typing import Optional, Union
 from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
@@ -15,7 +15,7 @@ from app.database.connection import get_db
 
 async def get_current_user_id(
     authorization: str = Header(None)  # Uncomment when JWT ready
-) -> int:
+) -> Union[int, str]:
     """
     Get current user ID from JWT token
     
@@ -44,15 +44,17 @@ async def get_current_user_id(
         payload = verify_token(token)
         
         # Security Note: We check multiple common keys to ensure compatibility with your JWT handler
-        user_id = payload.get("user_id") or payload.get("id") or payload.get("sub")
+        # UPDATED: We now accept 'sub' (email) if 'user_id' is not present
+        identity = payload.get("user_id") or payload.get("id") or payload.get("sub")
         
-        if not user_id:
+        if not identity:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User identity could not be verified from token"
             )
         
-        return int(user_id)
+        # Return as is (could be int or email string)
+        return identity
     
     except Exception as e:
         raise HTTPException(
@@ -66,7 +68,7 @@ async def get_current_user_id(
 
 
 async def get_current_user(
-    user_id: int = Depends(get_current_user_id),
+    identity: Union[int, str] = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ) -> dict:
     """
@@ -77,7 +79,12 @@ async def get_current_user(
     # ==== COMMENTED FOR TESTING - UNCOMMENT WHEN AUTH READY ====
     from app.models.users import User
     
-    user = db.query(User).filter(User.id == user_id).first()
+    # UPDATED: Logic to handle both numeric ID and Email lookup
+    if isinstance(identity, str) and "@" in identity:
+        user = db.query(User).filter(User.email == identity).first()
+    else:
+        user = db.query(User).filter(User.id == identity).first()
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
