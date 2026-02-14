@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 
-# Initialize logger to see exactly where the failure happens in Render logs
+# Setup logging
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -43,12 +43,20 @@ async def get_current_user_id(
         token = parts[1]
         
         # Verify JWT and extract user_id
-        from app.auth.jwt_handler import verify_token
-        payload = verify_token(token)
+        # Syncing with your actual utility file: app/utils/userUtils.py
+        from app.utils import userUtils as utils
         
-        # Security Note: We check multiple common keys to ensure compatibility with your JWT handler
-        # UPDATED: We now accept 'sub' (email) if 'user_id' is not present
-        identity = payload.get("user_id") or payload.get("id") or payload.get("sub")
+        payload = utils.verify_token(token)
+        
+        # Critical security check from your userUtils: must be an 'access' token
+        if payload is None or payload.get("type") != "access":
+             raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type or expired session"
+            )
+
+        # Your login logic uses "sub" for email.
+        identity = payload.get("sub")
         
         if not identity:
             raise HTTPException(
@@ -56,11 +64,9 @@ async def get_current_user_id(
                 detail="User identity could not be verified from token"
             )
         
-        # Return as is (could be int or email string)
         return identity
     
     except Exception as e:
-        # ABSOLUTELY REQUIRED: Log the actual error to Render console so we can see it
         logger.error(f"JWT Verification Failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,31 +90,23 @@ async def get_current_user(
     # ==== COMMENTED FOR TESTING - UNCOMMENT WHEN AUTH READY ====
     from app.models.users import User
     
-    # UPDATED: Logic to handle both numeric ID and Email lookup
+    # Since your token uses the email address in 'sub', we look up by email
     if isinstance(identity, str) and "@" in identity:
         user = db.query(User).filter(User.email == identity).first()
     else:
-        # Safety check for integer conversion from token strings
-        try:
-            lookup_id = int(identity)
-            user = db.query(User).filter(User.id == lookup_id).first()
-        except (ValueError, TypeError):
-            user = None
+        # Fallback for numeric ID if identity is an integer
+        user = db.query(User).filter(User.id == identity).first()
 
     if not user:
-        logger.error(f"User Lookup Failed: No user found for identity {identity}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User record not found"
         )
     
     # Safety Check: Oracle 0/1 to Boolean conversion
-    # UPDATED: We use a more robust check for Oracle Number types
-    is_active_val = getattr(user, "is_active", 1)
-    
-    # Strictly check for 0. If it's 1 or None (if DB allows), let them in.
-    if is_active_val == 0:
-        logger.warning(f"Access Denied: User {user.email} is_active is 0")
+    # Based on your DB dump, we treat NULL or 1 as active, only 0 is blocked
+    is_active = getattr(user, "is_active", 1)
+    if is_active == 0:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is deactivated"
@@ -205,22 +203,19 @@ async def verify_auction_owner(
 # COMMON DEPENDENCIES (Security Hardened)
 # ============================================================================
 
-# FIX: Removed pre-wrapped Depends() to fix "not a callable object" TypeError
-
-# SECURITY: We explicitly list roles. 
-# If you want an Admin to be able to create an auction for testing/support:
+# For seller-only endpoints
 RequireSeller = RoleChecker(["SELLER", "ADMIN"]) 
 
-# For buyer-only endpoints (Admins usually need to see what buyers see for support)
+# For buyer-only endpoints
 RequireBuyer = RoleChecker(["BUYER", "ADMIN"])
 
-# For admin-only endpoints (STRICT: Sellers cannot access these)
+# For admin-only endpoints
 RequireAdmin = RoleChecker(["ADMIN"])
 
-# For L1 approver (Strict workflow)
+# For L1 approver
 RequireL1Approver = RoleChecker(["L1_APPROVER", "ADMIN"])
 
-# For L2 approver (Strict workflow)
+# For L2 approver
 RequireL2Approver = RoleChecker(["L2_APPROVER", "ADMIN"])
 
 # Any authenticated user
