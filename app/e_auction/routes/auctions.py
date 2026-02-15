@@ -70,6 +70,80 @@ async def get_auction_detail(
 
 
 # ============================================================================
+# MANAGEMENT & RESTRICTED DETAILS (View/Edit Support)
+# ============================================================================
+
+@router.get("/{auction_id}/manage", response_model=AuctionDetailResponse)
+async def get_auction_management_details(
+    auction_id: int,
+    # ==== RBAC: Authenticated Users Only ====
+    current_user: dict = Depends(RequireAuth),
+    db: Session = Depends(get_db)
+):
+    """
+    Get FULL auction details for Management/Edit Page.
+    Includes all lot details.
+    
+    RBAC Rules:
+    - ADMIN: Can view ALL auctions.
+    - SELLER: Can view ONLY their own auctions.
+    - BUYER: Restricted (403 Forbidden).
+    """
+    auction = AuctionService.get_by_id(db, auction_id)
+    
+    # Helper to get user ID and Role safely from dict
+    user_id = current_user.id if hasattr(current_user, 'id') else current_user.get('id')
+    user_role = current_user.role if hasattr(current_user, 'role') else current_user.get('role')
+    
+    # 1. Admin Override - Can see everything
+    if user_role == "admin":
+        return AuctionDetailResponse.model_validate(auction)
+        
+    # 2. Seller Check - Can see only their own
+    if user_role == "seller":
+        if auction.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to manage this auction."
+            )
+        return AuctionDetailResponse.model_validate(auction)
+    
+    # 3. Deny everyone else (Buyers/Viewers shouldn't use this endpoint)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied. This endpoint is for Sellers and Admins only."
+    )
+
+
+@router.get("/open/{auction_id}", response_model=AuctionDetailResponse, response_model_exclude={
+    "created_by", 
+    "l1_approved_by", "l1_approved_at", "l1_remarks", 
+    "l2_approved_by", "l2_approved_at", "l2_remarks", 
+    "rejection_reason"
+})
+async def get_open_auction_details(
+    auction_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    [OPEN API] Get auction details for public website display.
+    
+    - Excludes 'critical' internal info (remarks, approver IDs, creator ID).
+    - Hides DRAFT or CANCELLED auctions (only shows Live/Scheduled/Closed).
+    """
+    auction = AuctionService.get_by_id(db, auction_id)
+    
+    # Restrict visibility for public endpoint
+    if auction.status in [AuctionStatus.DRAFT, AuctionStatus.PENDING_APPROVAL]:
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Auction not publicly available."
+        )
+        
+    return AuctionDetailResponse.model_validate(auction)
+
+
+# ============================================================================
 # AUTHENTICATED ENDPOINTS (Require login)
 # ============================================================================
 
