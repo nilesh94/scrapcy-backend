@@ -36,10 +36,14 @@ class AuctionService:
         if not lots_data:
             raise InvalidDateRangeException("At least 1 lot is required to create an auction")
 
+        # Create Auction Instance
+        # Convert Enum to string for DB if necessary, or pass raw if driver handles it
+        auction_type_str = str(auction_data.auction_type.value) if hasattr(auction_data.auction_type, 'value') else auction_data.auction_type
+
         auction = Auction(
             created_by=created_by_user_id,
             auction_title=auction_data.auction_title,
-            auction_type=auction_data.auction_type,
+            auction_type=auction_type_str, 
             category=auction_data.category,
             region=auction_data.region,
             status=AuctionStatus.DRAFT,
@@ -49,9 +53,10 @@ class AuctionService:
             currency=auction_data.currency,
             emd_amount=auction_data.emd_amount,
             registration_fee=auction_data.registration_fee,
-            enable_extension=auction_data.enable_extension,
+            enable_extension=1 if auction_data.enable_extension else 0, # Ensure int for Oracle Number(1)
             extension_trigger_window_minutes=auction_data.extension_trigger_window_minutes,
             extension_duration_minutes=auction_data.extension_duration_minutes,
+            extension_min_total_bids=auction_data.extension_min_total_bids,
             inspection_start_date=auction_data.inspection_start_date,
             inspection_end_date=auction_data.inspection_end_date,
             inspection_location=auction_data.inspection_location,
@@ -66,11 +71,34 @@ class AuctionService:
         
         # Create Lots
         for lot_req in lots_data:
+            # Convert Pydantic model to dict, excluding unset/nulls
+            lot_dict = lot_req.dict(exclude_unset=True)
+            
+            # --- CRITICAL LOGIC: Propagate Auction Defaults to Lot ---
+            
+            # 1. Sync Times: If Lot times are missing, use Auction times
+            if not lot_dict.get('lot_start_time'):
+                lot_dict['lot_start_time'] = auction.scheduled_start_time
+            if not lot_dict.get('lot_end_time'):
+                lot_dict['lot_end_time'] = auction.scheduled_end_time
+            
+            # 2. Sync Auction Type: The lot needs to know if it is Reverse/Dutch
+            lot_dict['lot_auction_type'] = auction.auction_type
+
+            # 3. Handle Pincode: Merge into address if present (UI sends it, DB has no column)
+            if lot_dict.get('location_pincode'):
+                addr = lot_dict.get('location_address', '')
+                pincode = lot_dict.pop('location_pincode') # Remove from dict so it doesn't crash DB insert
+                if addr:
+                    lot_dict['location_address'] = f"{addr}, {pincode}"
+                else:
+                    lot_dict['location_address'] = str(pincode)
+
             # Create AuctionItem linked to this auction
             new_lot = AuctionItem(
                 auction_id=auction.id,
                 lot_status=LotStatus.PENDING,
-                **lot_req.dict(exclude_unset=True)
+                **lot_dict
             )
             db.add(new_lot)
         
@@ -299,5 +327,7 @@ class AuctionService:
             total_auctions=total,
             draft_auctions=draft,
             live_auctions=live,
-            pending_approval=pending
+            pending_approval=pending,
+            # Count total lots based on auctions
+            total_lots=db.query(func.count(AuctionItem.id)).scalar() or 0
         )
