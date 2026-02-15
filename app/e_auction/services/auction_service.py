@@ -53,7 +53,8 @@ class AuctionService:
             currency=auction_data.currency,
             emd_amount=auction_data.emd_amount,
             registration_fee=auction_data.registration_fee,
-            enable_extension=1 if auction_data.enable_extension else 0, # Ensure int for Oracle Number(1)
+            # Ensure int for Oracle Number(1) column
+            enable_extension=1 if auction_data.enable_extension else 0, 
             extension_trigger_window_minutes=auction_data.extension_trigger_window_minutes,
             extension_duration_minutes=auction_data.extension_duration_minutes,
             extension_min_total_bids=auction_data.extension_min_total_bids,
@@ -72,7 +73,11 @@ class AuctionService:
         # Create Lots
         for lot_req in lots_data:
             # Convert Pydantic model to dict, excluding unset/nulls
-            lot_dict = lot_req.dict(exclude_unset=True)
+            # Support both Pydantic v1 (dict) and v2 (model_dump)
+            try:
+                lot_dict = lot_req.model_dump(exclude_unset=True)
+            except AttributeError:
+                lot_dict = lot_req.dict(exclude_unset=True)
             
             # --- CRITICAL LOGIC: Propagate Auction Defaults to Lot ---
             
@@ -82,10 +87,10 @@ class AuctionService:
             if not lot_dict.get('lot_end_time'):
                 lot_dict['lot_end_time'] = auction.scheduled_end_time
             
-            # 2. Sync Auction Type: The lot needs to know if it is Reverse/Dutch
+            # 2. Sync Auction Type: The lot needs to know if it is Reverse/Dutch (DB Column: LOT_AUCTION_TYPE)
             lot_dict['lot_auction_type'] = auction.auction_type
 
-            # 3. Handle Pincode: Merge into address if present (UI sends it, DB has no column)
+            # 3. Handle Pincode: Merge into address if present (UI sends it, DB has no column for pincode in ITEMS)
             if lot_dict.get('location_pincode'):
                 addr = lot_dict.get('location_address', '')
                 pincode = lot_dict.pop('location_pincode') # Remove from dict so it doesn't crash DB insert
@@ -138,7 +143,11 @@ class AuctionService:
             raise AuctionNotEditableException(auction.status)
         
         # Update fields
-        update_data = auction_data.dict(exclude_unset=True)
+        try:
+            update_data = auction_data.model_dump(exclude_unset=True)
+        except AttributeError:
+            update_data = auction_data.dict(exclude_unset=True)
+
         for field, value in update_data.items():
             setattr(auction, field, value)
         
@@ -171,13 +180,18 @@ class AuctionService:
         skip = (page - 1) * page_size
         auctions = query.order_by(Auction.created_at.desc()).offset(skip).limit(page_size).all()
         
+        # Handle Pydantic V2 model_validate or V1 from_orm
+        try:
+            auction_list = [AuctionBasicResponse.model_validate(a) for a in auctions]
+        except AttributeError:
+            auction_list = [AuctionBasicResponse.from_orm(a) for a in auctions]
+
         return AuctionListResponse(
             total=total,
             page=page,
             page_size=page_size,
             total_pages=(total + page_size - 1) // page_size,
-            # UPDATED: model_validate for Pydantic V2
-            auctions=[AuctionBasicResponse.model_validate(a) for a in auctions]
+            auctions=auction_list
         )
     
     @staticmethod
