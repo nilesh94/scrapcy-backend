@@ -111,7 +111,12 @@ class AuctionService:
         auction.total_lots = len(lots_data)
 
         db.commit()
+        
+        # REQUIRED FIX: Explicitly load items relationship before returning
+        # This prevents the 'blank page' issue in the UI caused by missing lot IDs
         db.refresh(auction)
+        _ = auction.items # Accessing relationship triggers lazy load if not already loaded
+        
         return auction
     
     @staticmethod
