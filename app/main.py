@@ -42,6 +42,7 @@ from app.routes import requirements as requirement_routes
 # Note: We alias them to match your variable names if the filenames are 'auctions.py' and 'admin.py'
 from app.e_auction.routes import auctions as auction_routes
 from app.e_auction.routes import admin_routes as admin_routes
+from app.e_auction.routes import lots
 
 # ============================================================================
 # SETUP LOGGING
@@ -97,6 +98,7 @@ app.include_router(category_routes.router)
 app.include_router(location_routes.router)
 app.include_router(market_price_routes.router)
 app.include_router(requirement_routes.router)
+app.include_router(lots.router)
 
 # ============================================================================
 # ✨ INCLUDE E-AUCTION ROUTERS (NEW)
