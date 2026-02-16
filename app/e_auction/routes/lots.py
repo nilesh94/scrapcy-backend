@@ -4,19 +4,21 @@ API endpoints for managing individual auction lots
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any
+from typing import Optional
 from pydantic import BaseModel
 
 from app.database.connection import get_db
 from app.e_auction.models.auction_item import AuctionItem
-from app.e_auction.models.auction import Auction # Assuming Auction model exists for permission check
-from app.e_auction.routes.auth_dependencies import RequireAuth
+from app.e_auction.models.auction import Auction
+from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus  # Using Enums
+from app.e_auction.routes.auth_dependencies import (
+    RequireAuth, 
+    get_current_user_id
+)
 
 router = APIRouter(prefix="/api/v1/e-auction/lots", tags=["Lots"])
 
-# --- Schemas for Request/Response (Simple inline definition for focus) ---
-# ideally these would be in app/e_auction/schemas/auction_item.py
-
+# --- Schemas for Request/Response ---
 class LotUpdateRequest(BaseModel):
     item_name: Optional[str] = None
     item_type: Optional[str] = None
@@ -40,7 +42,7 @@ class LotUpdateRequest(BaseModel):
     condition_rating: Optional[int] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ============================================================================
 # ENDPOINTS
@@ -49,17 +51,43 @@ class LotUpdateRequest(BaseModel):
 @router.get("/{lot_id}")
 async def get_lot_details(
     lot_id: int,
+    # RBAC: Authentication required to view full lot details (like reserve price)
+    current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
-    Get details of a specific lot
+    Get details of a specific lot.
+    
+    RBAC Rules:
+    - ADMIN: Can view any lot.
+    - SELLER: Can view ONLY their own lots.
+    - BUYER: Restricted (403 Forbidden).
     """
+    # 1. Fetch Lot
     lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
     if not lot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Lot with ID {lot_id} not found"
         )
+
+    # 2. Fetch Parent Auction for Permission Check
+    auction = db.query(Auction).filter(Auction.id == lot.auction_id).first()
+    if not auction:
+        raise HTTPException(status_code=404, detail="Parent auction not found")
+
+    # 3. RBAC Check using Helper
+    user_id = get_current_user_id(current_user)
+    user_role = current_user.get('role') # Assuming role is directly in dict from token
+
+    if user_role != "admin":
+        # Check ownership
+        if auction.created_by != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view details for this lot."
+            )
+
     return lot
 
 
@@ -75,7 +103,7 @@ async def update_lot(
     
     RBAC Rules:
     - ADMIN: Can edit any lot.
-    - SELLER: Can edit ONLY if they created the parent auction AND it is not yet approved/live.
+    - SELLER: Can edit ONLY if they created the parent auction AND it is DRAFT/REJECTED.
     """
     # 1. Fetch Lot
     lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
@@ -90,9 +118,9 @@ async def update_lot(
     if not auction:
         raise HTTPException(status_code=404, detail="Parent auction not found")
 
-    # 3. RBAC & Status Check
-    user_id = current_user.id if hasattr(current_user, 'id') else current_user.get('id')
-    user_role = current_user.role if hasattr(current_user, 'role') else current_user.get('role')
+    # 3. RBAC & Status Check using Helper
+    user_id = get_current_user_id(current_user)
+    user_role = current_user.get('role')
 
     if user_role != "admin":
         # Check ownership
@@ -102,13 +130,19 @@ async def update_lot(
                 detail="You do not have permission to edit this lot."
             )
         
-        # Check Auction Status (Lock editing if approved or live)
-        # Assuming approval_status values: PENDING, L1_APPROVED, L2_APPROVED, REJECTED
-        locked_statuses = ["L1_APPROVED", "L2_APPROVED"] 
-        if auction.approval_status in locked_statuses or auction.status == "LIVE":
+        # Check Auction Status using Enums
+        # Allow edits only if DRAFT or REJECTED
+        allowed_statuses = [AuctionStatus.DRAFT, AuctionStatus.REJECTED]
+        
+        # Or alternatively check forbidden statuses (Approved/Live)
+        locked_approval_statuses = [ApprovalStatus.L1_APPROVED, ApprovalStatus.L2_APPROVED]
+        
+        if (auction.status not in allowed_statuses) or \
+           (auction.approval_status in locked_approval_statuses) or \
+           (auction.status == AuctionStatus.LIVE):
              raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
-                detail="Cannot edit lot: Auction is already approved or live."
+                detail="Cannot update lot unless parent auction is in DRAFT or REJECTED state."
             )
 
     # 4. Apply Updates
