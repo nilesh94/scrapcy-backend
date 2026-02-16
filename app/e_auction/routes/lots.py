@@ -10,11 +10,8 @@ from pydantic import BaseModel
 from app.database.connection import get_db
 from app.e_auction.models.auction_item import AuctionItem
 from app.e_auction.models.auction import Auction
-from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus  # Using Enums
-from app.e_auction.routes.auth_dependencies import (
-    RequireAuth, 
-    get_current_user_id
-)
+from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
+from app.e_auction.routes.auth_dependencies import RequireAuth
 
 router = APIRouter(prefix="/api/v1/e-auction/lots", tags=["Lots"])
 
@@ -76,9 +73,10 @@ async def get_lot_details(
     if not auction:
         raise HTTPException(status_code=404, detail="Parent auction not found")
 
-    # 3. RBAC Check using Helper
-    user_id = get_current_user_id(current_user)
-    user_role = current_user.get('role') # Assuming role is directly in dict from token
+    # 3. RBAC Check (Fixed: Access attributes via dot notation)
+    # RequireAuth returns a User object, not a dict
+    user_id = current_user.id
+    user_role = current_user.role
 
     if user_role != "admin":
         # Check ownership
@@ -118,9 +116,9 @@ async def update_lot(
     if not auction:
         raise HTTPException(status_code=404, detail="Parent auction not found")
 
-    # 3. RBAC & Status Check using Helper
-    user_id = get_current_user_id(current_user)
-    user_role = current_user.get('role')
+    # 3. RBAC & Status Check (Fixed: Access attributes via dot notation)
+    user_id = current_user.id 
+    user_role = current_user.role
 
     if user_role != "admin":
         # Check ownership
@@ -149,7 +147,8 @@ async def update_lot(
     update_data = lot_data.dict(exclude_unset=True)
     
     for key, value in update_data.items():
-        setattr(lot, key, value)
+        if hasattr(lot, key): # Safety check
+            setattr(lot, key, value)
 
     try:
         db.commit()
