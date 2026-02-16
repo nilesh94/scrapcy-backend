@@ -15,6 +15,9 @@ class Auction(Base):
     
     # Primary Key
     id = Column("ID", Integer, primary_key=True, index=True, autoincrement=True)
+
+    # seller_id: The actual owner (Company/Seller) of the auction
+    seller_id = Column("SELLER_ID", Integer, nullable=False, index=True)
     
     # Creator
     created_by = Column("CREATED_BY", Integer, nullable=False)
