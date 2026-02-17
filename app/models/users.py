@@ -2,13 +2,8 @@ from sqlalchemy import Column, Integer, String, TIMESTAMP, text
 from app.database.connection import Base
 
 class User(Base):
-    # 1. Match the table name exactly
     __tablename__ = "USERS"
     
-    # REMOVED: __table_args__ = {"schema": "ADMIN"} 
-    # This allows the app to use the default schema of your connection
-
-    # 2. Explicit Column Mapping
     id = Column("ID", Integer, primary_key=True, index=True)
     role = Column("ROLE", String(50), nullable=False)
     
@@ -34,10 +29,10 @@ class User(Base):
     state = Column("STATE", String(100), nullable=True)
     pincode = Column("PINCODE", String(20), nullable=True)
     
-    # Timestamp
+    is_active = Column("IS_ACTIVE", Integer, default=1)
+    email_verified = Column("EMAIL_VERIFIED", Integer, default=0)
+    gst_verified = Column("GST_VERIFIED", Integer, default=0)
+
     created_at = Column("CREATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
     updated_at = Column("UPDATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
     last_login_at = Column("LAST_LOGIN_AT", TIMESTAMP, nullable=True)
-    
-    # Ensure is_active matches the DB
-    is_active = Column("IS_ACTIVE", Integer, default=1)
