@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from datetime import datetime
 from typing import Optional, List
+import logging
 
 from app.database.connection import get_db
 from app.e_auction.models import (
@@ -17,6 +18,9 @@ from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
 
 # UPDATED: Pointing to internal auth_dependencies and using RequireAdmin
 from app.e_auction.routes.auth_dependencies import get_current_user, RequireAdmin
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -388,39 +392,46 @@ async def get_verified_sellers(
     Get list of verified sellers for dropdown selection
     Returns id, name, company_name, email
     """
-    # Base query for sellers
-    query = db.query(User).filter(
-        User.role == "seller",
-        User.is_active == 1,
-        # Ensure only verified users are returned (adjust flags based on your workflow)
-        User.email_verified == 1, 
-        User.gst_verified == 1
-    )
-    
-    # Apply search filter if provided
-    if q:
-        search_term = f"%{q}%"
-        query = query.filter(
-            or_(
-                User.first_name.ilike(search_term),
-                User.last_name.ilike(search_term),
-                User.company_name.ilike(search_term),
-                User.email.ilike(search_term)
-            )
+    try:
+        # Base query for sellers
+        query = db.query(User).filter(
+            User.role == "seller",
+            User.is_active == 1,
+            # Ensure only verified users are returned
+            User.email_verified == 1, 
+            User.gst_verified == 1
         )
-    
-    # Limit results for performance (dropdowns don't need 1000s of rows)
-    sellers = query.limit(20).all()
-    
-    # Return simplified list
-    return [
-        {
-            "id": seller.id,
-            "full_name": f"{seller.first_name} {seller.last_name}",
-            "company_name": seller.company_name,
-            "email": seller.email,
-            "city": seller.city,
-            "gst_number": seller.gst_number
-        }
-        for seller in sellers
-    ]
+        
+        # Apply search filter only if q is provided and has content
+        if q and len(q) >= 2:
+            search_term = f"%{q}%"
+            query = query.filter(
+                or_(
+                    User.first_name.ilike(search_term),
+                    User.last_name.ilike(search_term),
+                    User.company_name.ilike(search_term),
+                    User.email.ilike(search_term)
+                )
+            )
+        elif q:
+            # If a search term is provided but too short, return empty list to avoid 500
+            return []
+        
+        # Limit results for performance
+        sellers = query.limit(20).all()
+        
+        # Return simplified list
+        return [
+            {
+                "id": seller.id,
+                "full_name": f"{seller.first_name} {seller.last_name}",
+                "company_name": seller.company_name,
+                "email": seller.email,
+                "city": seller.city,
+                "gst_number": seller.gst_number
+            }
+            for seller in sellers
+        ]
+    except Exception as e:
+        logger.error(f"Error in get_verified_sellers: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error fetching sellers")
