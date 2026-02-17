@@ -389,49 +389,55 @@ async def get_verified_sellers(
     current_user = Depends(RequireAdmin)
 ):
     """
-    Get list of verified sellers for dropdown selection
-    Returns id, name, company_name, email
+    Get list of verified sellers for dropdown selection.
+    Uses Oracle-safe case-insensitive search logic.
     """
     try:
-        # Base query for sellers
+        # 1. Base query: Filter for active, verified sellers
         query = db.query(User).filter(
             User.role == "seller",
             User.is_active == 1,
-            # Ensure only verified users are returned
             User.email_verified == 1, 
             User.gst_verified == 1
         )
         
-        # Apply search filter only if q is provided and has content
-        if q and len(q) >= 2:
-            search_term = f"%{q}%"
+        # 2. Oracle-Safe Search Filter
+        if q:
+            # We use .lower() on both the search term and the DB columns 
+            # to mimic 'ilike' behavior without using the unsupported operator.
+            search_term = f"%{q.lower()}%"
             query = query.filter(
                 or_(
-                    User.first_name.ilike(search_term),
-                    User.last_name.ilike(search_term),
-                    User.company_name.ilike(search_term),
-                    User.email.ilike(search_term)
+                    func.lower(User.first_name).like(search_term),
+                    func.lower(User.last_name).like(search_term),
+                    func.lower(User.company_name).like(search_term),
+                    func.lower(User.email).like(search_term)
                 )
             )
-        elif q:
-            # If a search term is provided but too short, return empty list to avoid 500
-            return []
         
-        # Limit results for performance
+        # 3. Limit results for dropdown performance
         sellers = query.limit(20).all()
         
-        # Return simplified list
+        # 4. Safe Attribute Mapping
+        # Using getattr to ensure missing optional columns don't cause a crash.
         return [
             {
-                "id": seller.id,
-                "full_name": f"{seller.first_name} {seller.last_name}",
-                "company_name": seller.company_name,
-                "email": seller.email,
-                "city": seller.city,
-                "gst_number": seller.gst_number
+                "id": s.id,
+                "full_name": f"{getattr(s, 'first_name', '')} {getattr(s, 'last_name', '')}".strip(),
+                "company_name": getattr(s, 'company_name', 'N/A'),
+                "email": getattr(s, 'email', 'N/A'),
+                # These might be NULL in your DB, so we provide defaults
+                "city": getattr(s, 'city', None),
+                "gst_number": getattr(s, 'gst_number', None)
             }
-            for seller in sellers
+            for s in sellers
         ]
+        
     except Exception as e:
-        logger.error(f"Error in get_verified_sellers: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error fetching sellers")
+        # This will now print the EXACT error to your Render Logs
+        import logging
+        logging.error(f"FATAL DATABASE ERROR in verified-sellers: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Database Search Failed: {str(e)}"
+        )
