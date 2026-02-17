@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 async def get_current_user_id(
-    authorization: str = Header(None)  # Uncomment when JWT ready
+    authorization: str = Header(None),  # Uncomment when JWT ready
+    db: Session = Depends(get_db)       # Added db to convert identity to numeric ID
 ) -> Union[int, str]:
     """
     Get current user ID from JWT token
@@ -64,8 +65,17 @@ async def get_current_user_id(
                 detail="User identity could not be verified from token"
             )
         
+        # --- ABSOLUTELY REQUIRED FIX ---
+        # Convert email identity to numeric ID so DB queries in services don't crash
+        from app.models.users import User
+        user = db.query(User.id).filter(User.email == identity).first()
+        if user:
+            return user.id
+            
         return identity
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"JWT Verification Failed: {str(e)}")
         raise HTTPException(
