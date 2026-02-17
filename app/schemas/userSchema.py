@@ -24,6 +24,10 @@ class UserBase(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
 
+    is_active: Optional[int] = 1
+    email_verified: Optional[int] = 0
+    gst_verified: Optional[int] = 0
+
 # 2. Input Schema (Frontend -> Backend)
 class UserCreate(UserBase):
     password: str
