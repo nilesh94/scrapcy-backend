@@ -10,6 +10,13 @@ from typing import Optional
 from app.database.connection import get_db
 from app.e_auction.services import AuctionService
 from app.e_auction.schemas.auction import *
+from app.e_auction.utils.exceptions import (
+    AuctionNotFoundException,
+    ForbiddenException,
+    InvalidDateRangeException,
+    AuctionNotEditableException,
+    AuctionNotApprovedException
+)
 from app.e_auction.routes.auth_dependencies import (
     get_current_user_id,
     get_current_user,
@@ -64,9 +71,12 @@ async def get_auction_detail(
     """
     Get auction details (public)
     """
-    auction = AuctionService.get_by_id(db, auction_id)
-    # UPDATED: model_validate is the Pydantic V2 equivalent of from_orm
-    return AuctionDetailResponse.model_validate(auction)
+    try:
+        auction = AuctionService.get_by_id(db, auction_id)
+        # UPDATED: model_validate is the Pydantic V2 equivalent of from_orm
+        return AuctionDetailResponse.model_validate(auction)
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ============================================================================
@@ -86,37 +96,41 @@ async def get_auction_management_details(
     
     RBAC Rules:
     - ADMIN: Can view ALL auctions.
-    - SELLER: Can view ONLY their own auctions.
+    - SELLER: Can view ONLY their own auctions (Owner or Creator).
     - BUYER: Restricted (403 Forbidden).
     """
-    auction = AuctionService.get_by_id(db, auction_id)
-    
-    # Helper to get user ID and Role safely from dict
-    user_id = current_user.id if hasattr(current_user, 'id') else current_user.get('id')
-    user_role = current_user.role if hasattr(current_user, 'role') else current_user.get('role')
-    
-    # 1. Admin Override - Can see everything
-    if user_role == "admin":
-        return AuctionDetailResponse.model_validate(auction)
+    try:
+        auction = AuctionService.get_by_id(db, auction_id)
         
-    # 2. Seller Check - Can see only their own
-    if user_role == "seller":
-        if auction.created_by != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to manage this auction."
-            )
-        return AuctionDetailResponse.model_validate(auction)
-    
-    # 3. Deny everyone else (Buyers/Viewers shouldn't use this endpoint)
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Access denied. This endpoint is for Sellers and Admins only."
-    )
+        # Helper to get user ID and Role safely from dict
+        user_id = get_current_user_id(current_user)
+        user_role = current_user.get('role')
+        
+        # 1. Admin Override - Can see everything
+        if user_role == "admin":
+            return AuctionDetailResponse.model_validate(auction)
+            
+        # 2. Seller Check - Can see only their own
+        if user_role == "seller":
+            # Check if user is the Owner (seller_id) OR the Creator
+            if auction.created_by != user_id and auction.seller_id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to manage this auction."
+                )
+            return AuctionDetailResponse.model_validate(auction)
+        
+        # 3. Deny everyone else (Buyers/Viewers shouldn't use this endpoint)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. This endpoint is for Sellers and Admins only."
+        )
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/open/{auction_id}", response_model=AuctionDetailResponse, response_model_exclude={
-    "created_by", 
+    "created_by", "seller_id",
     "l1_approved_by", "l1_approved_at", "l1_remarks", 
     "l2_approved_by", "l2_approved_at", "l2_remarks", 
     "rejection_reason"
@@ -131,16 +145,19 @@ async def get_open_auction_details(
     - Excludes 'critical' internal info (remarks, approver IDs, creator ID).
     - Hides DRAFT or CANCELLED auctions (only shows Live/Scheduled/Closed).
     """
-    auction = AuctionService.get_by_id(db, auction_id)
-    
-    # Restrict visibility for public endpoint
-    if auction.status in [AuctionStatus.DRAFT, AuctionStatus.PENDING_APPROVAL]:
-         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Auction not publicly available."
-        )
+    try:
+        auction = AuctionService.get_by_id(db, auction_id)
         
-    return AuctionDetailResponse.model_validate(auction)
+        # Restrict visibility for public endpoint
+        if auction.status in [AuctionStatus.DRAFT, AuctionStatus.PENDING_APPROVAL]:
+             raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Auction not publicly available."
+            )
+            
+        return AuctionDetailResponse.model_validate(auction)
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ============================================================================
@@ -171,7 +188,7 @@ async def list_my_auctions(
         filters=filters,
         page=page,
         page_size=page_size,
-        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
+        user_id=get_current_user_id(current_user)
     )
 
 
@@ -191,13 +208,36 @@ async def create_auction(
     
     RBAC: Requires SELLER or ADMIN role
     """
-    auction = AuctionService.create_auction(
-        db=db,
-        auction_data=auction_data,
-        created_by_user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
-    )
+    user_id = get_current_user_id(current_user)
+    user_role = current_user.get('role')
+
+    # 1. Determine Owner (Seller ID)
+    final_seller_id = user_id
     
-    return AuctionDetailResponse.model_validate(auction)
+    if user_role == "admin":
+        if not auction_data.seller_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Admin must select a Seller when creating an auction."
+            )
+        final_seller_id = auction_data.seller_id
+    else:
+        # Force sellers to only create for themselves
+        final_seller_id = user_id
+
+    try:
+        auction = AuctionService.create_auction(
+            db=db,
+            auction_data=auction_data,
+            seller_id=final_seller_id,
+            created_by_user_id=user_id
+        )
+        
+        return AuctionDetailResponse.model_validate(auction)
+    except InvalidDateRangeException as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create auction: {str(e)}")
 
 
 @router.put("/{auction_id}", response_model=AuctionDetailResponse)
@@ -214,14 +254,25 @@ async def update_auction(
     RBAC: Only auction creator can update
     Service validates ownership
     """
-    auction = AuctionService.update_auction(
-        db=db,
-        auction_id=auction_id,
-        auction_data=auction_data,
-        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
-    )
-    
-    return AuctionDetailResponse.model_validate(auction)
+    try:
+        user_id = get_current_user_id(current_user)
+        
+        updated_auction = AuctionService.update_auction(
+            db=db,
+            auction_id=auction_id,
+            auction_data=auction_data,
+            user_id=user_id
+        )
+        
+        return AuctionDetailResponse.model_validate(updated_auction)
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ForbiddenException as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except AuctionNotEditableException as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{auction_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -236,13 +287,22 @@ async def delete_auction(
     
     RBAC: Only auction creator can delete
     """
-    AuctionService.delete_auction(
-        db=db,
-        auction_id=auction_id,
-        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
-    )
-    
-    return None
+    try:
+        user_id = get_current_user_id(current_user)
+        
+        AuctionService.delete_auction(
+            db=db,
+            auction_id=auction_id,
+            user_id=user_id
+        )
+        
+        return None
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ForbiddenException as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except AuctionNotEditableException as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{auction_id}/submit-for-approval", response_model=AuctionActionResponse)
@@ -257,19 +317,28 @@ async def submit_auction_for_approval(
     
     RBAC: Only auction creator
     """
-    auction = AuctionService.submit_for_approval(
-        db=db,
-        auction_id=auction_id,
-        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
-    )
-    
-    return AuctionActionResponse(
-        success=True,
-        message="Auction submitted for approval",
-        auction_id=auction.id,
-        new_status=auction.status,
-        new_approval_status=auction.approval_status
-    )
+    try:
+        user_id = get_current_user_id(current_user)
+        
+        auction = AuctionService.submit_for_approval(
+            db=db,
+            auction_id=auction_id,
+            user_id=user_id
+        )
+        
+        return AuctionActionResponse(
+            success=True,
+            message="Auction submitted for approval",
+            auction_id=auction.id,
+            new_status=auction.status,
+            new_approval_status=auction.approval_status
+        )
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ForbiddenException as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidDateRangeException as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{auction_id}/cancel", response_model=AuctionActionResponse)
@@ -285,19 +354,31 @@ async def cancel_auction(
     
     RBAC: Only auction creator or ADMIN
     """
-    auction = AuctionService.cancel_auction(
-        db=db,
-        auction_id=auction_id,
-        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
-        reason=request.cancellation_reason
-    )
-    
-    return AuctionActionResponse(
-        success=True,
-        message="Auction cancelled successfully",
-        auction_id=auction.id,
-        new_status=auction.status
-    )
+    try:
+        user_id = get_current_user_id(current_user)
+        user_role = current_user.get('role')
+        
+        # Explicit Owner check before service call if strict validation needed here
+        if user_role != 'admin':
+             auc = AuctionService.get_by_id(db, auction_id)
+             if auc.seller_id != user_id and auc.created_by != user_id:
+                 raise HTTPException(status_code=403, detail="Not authorized to cancel this auction")
+
+        auction = AuctionService.cancel_auction(
+            db=db,
+            auction_id=auction_id,
+            user_id=user_id,
+            reason=request.cancellation_reason
+        )
+        
+        return AuctionActionResponse(
+            success=True,
+            message="Auction cancelled successfully",
+            auction_id=auction.id,
+            new_status=auction.status
+        )
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ============================================================================
@@ -342,20 +423,25 @@ async def approve_auction_l1(
     
     RBAC: Requires L1_APPROVER or ADMIN role
     """
-    auction = AuctionService.approve_l1(
-        db=db,
-        auction_id=auction_id,
-        approver_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
-        remarks=request.remarks,
-        approve=request.approve
-    )
-    
-    return AuctionActionResponse(
-        success=True,
-        message="L1 approval processed" if request.approve else "Auction rejected",
-        auction_id=auction.id,
-        new_approval_status=auction.approval_status
-    )
+    try:
+        user_id = get_current_user_id(current_user)
+        
+        auction = AuctionService.approve_l1(
+            db=db,
+            auction_id=auction_id,
+            approver_id=user_id,
+            remarks=request.remarks,
+            approve=request.approve
+        )
+        
+        return AuctionActionResponse(
+            success=True,
+            message="L1 approval processed" if request.approve else "Auction rejected",
+            auction_id=auction.id,
+            new_approval_status=auction.approval_status
+        )
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/{auction_id}/approve-l2", response_model=AuctionActionResponse)
@@ -371,21 +457,28 @@ async def approve_auction_l2(
     
     RBAC: Requires L2_APPROVER or ADMIN role
     """
-    auction = AuctionService.approve_l2(
-        db=db,
-        auction_id=auction_id,
-        approver_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
-        remarks=request.remarks,
-        approve=request.approve
-    )
-    
-    return AuctionActionResponse(
-        success=True,
-        message="L2 approval processed - Auction scheduled" if request.approve else "Auction rejected",
-        auction_id=auction.id,
-        new_approval_status=auction.approval_status,
-        new_status=auction.status
-    )
+    try:
+        user_id = get_current_user_id(current_user)
+        
+        auction = AuctionService.approve_l2(
+            db=db,
+            auction_id=auction_id,
+            approver_id=user_id,
+            remarks=request.remarks,
+            approve=request.approve
+        )
+        
+        return AuctionActionResponse(
+            success=True,
+            message="L2 approval processed - Auction scheduled" if request.approve else "Auction rejected",
+            auction_id=auction.id,
+            new_approval_status=auction.approval_status,
+            new_status=auction.status
+        )
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AuctionNotEditableException as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{auction_id}/publish", response_model=AuctionActionResponse)
@@ -401,17 +494,22 @@ async def publish_auction_manually(
     
     RBAC: Requires ADMIN role
     """
-    auction = AuctionService.publish_auction(
-        db=db,
-        auction_id=auction_id
-    )
-    
-    return AuctionActionResponse(
-        success=True,
-        message="Auction published successfully",
-        auction_id=auction.id,
-        new_status=auction.status
-    )
+    try:
+        auction = AuctionService.publish_auction(
+            db=db,
+            auction_id=auction_id
+        )
+        
+        return AuctionActionResponse(
+            success=True,
+            message="Auction published successfully",
+            auction_id=auction.id,
+            new_status=auction.status
+        )
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AuctionNotApprovedException as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ============================================================================
@@ -431,7 +529,7 @@ async def get_auction_statistics(
     """
     return AuctionService.get_auction_stats(
         db=db, 
-        user_id=current_user.id if hasattr(current_user, 'id') else current_user.get('id')
+        user_id=get_current_user_id(current_user)
     )
 
 
