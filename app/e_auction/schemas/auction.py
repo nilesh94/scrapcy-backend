@@ -29,6 +29,9 @@ class AuctionCreateRequest(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     region: Optional[str] = Field(None, max_length=100)
     
+    # --- Seller ID (For Admin creation) ---
+    seller_id: Optional[int] = Field(None, description="ID of the Seller/Company. Required if Admin is creating.")
+    
     # Scheduling
     scheduled_start_time: datetime = Field(..., description="When auction starts")
     scheduled_end_time: datetime = Field(..., description="When auction ends")
@@ -57,7 +60,7 @@ class AuctionCreateRequest(BaseModel):
     terms_and_conditions: Optional[str] = None
     auction_doc_url: Optional[str] = Field(None, max_length=500)
 
-    # --- NEW FIELD: Allow creating lots in the same request ---
+    # Allow creating lots in the same request
     lots: Optional[List[LotCreateRequest]] = Field(default=[], description="List of lots to create immediately")
     
     @validator('scheduled_end_time')
@@ -77,6 +80,7 @@ class AuctionCreateRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "auction_title": "Industrial Scrap Metal Auction - January 2025",
+                "seller_id": 101,
                 "auction_type": "FORWARD",
                 "category": "Ferrous Metals",
                 "region": "Maharashtra",
@@ -191,6 +195,9 @@ class AuctionBasicResponse(BaseModel):
     id: int
     auction_title: str
     auction_type: Optional[str] = None
+    
+    seller_id: int
+    
     status: str
     approval_status: str
     
@@ -218,6 +225,8 @@ class AuctionDetailResponse(BaseModel):
     auction_type: Optional[str] = None
     category: Optional[str] = None
     region: Optional[str] = None
+    
+    seller_id: int
     
     # Status
     status: str
@@ -281,7 +290,7 @@ class AuctionDetailResponse(BaseModel):
     requires_emd: bool = False
     requires_registration_fee: bool = False
 
-    # --- NEW FIELD: Return created items in response ---
+    # Return created items in response
     items: Optional[List[LotDetailResponse]] = []
     
     class Config:
