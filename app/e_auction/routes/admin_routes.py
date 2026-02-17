@@ -1,18 +1,18 @@
 """
 E-Auction Admin Routes
-Add this file to: app/e_auction/routes/admin_routes.py
 """
-from fastapi import APIRouter, Depends, HTTPException, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, Body, Request, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from app.database.connection import get_db
 from app.e_auction.models import (
     Auction, AuctionItem, Bid, AuctionParticipant, 
     Payment, Settlement, AuditLog
 )
+from app.models.users import User
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
 
 # UPDATED: Pointing to internal auth_dependencies and using RequireAdmin
@@ -372,3 +372,55 @@ async def get_pending_approvals(
         "page": page,
         "page_size": page_size
     }
+
+
+# ============================================================================
+# GET VERIFIED SELLERS (FOR ADMIN DROP DOWN)
+# ============================================================================
+
+@router.get("/verified-sellers")
+async def get_verified_sellers(
+    q: Optional[str] = Query(None, min_length=2, description="Search by name, company or email"),
+    db: Session = Depends(get_db),
+    current_user = Depends(RequireAdmin)
+):
+    """
+    Get list of verified sellers for dropdown selection
+    Returns id, name, company_name, email
+    """
+    # Base query for sellers
+    query = db.query(User).filter(
+        User.role == "seller",
+        User.is_active == 1,
+        # Ensure only verified users are returned (adjust flags based on your workflow)
+        User.email_verified == 1, 
+        User.gst_verified == 1
+    )
+    
+    # Apply search filter if provided
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            or_(
+                User.first_name.ilike(search_term),
+                User.last_name.ilike(search_term),
+                User.company_name.ilike(search_term),
+                User.email.ilike(search_term)
+            )
+        )
+    
+    # Limit results for performance (dropdowns don't need 1000s of rows)
+    sellers = query.limit(20).all()
+    
+    # Return simplified list
+    return [
+        {
+            "id": seller.id,
+            "full_name": f"{seller.first_name} {seller.last_name}",
+            "company_name": seller.company_name,
+            "email": seller.email,
+            "city": seller.city,
+            "gst_number": seller.gst_number
+        }
+        for seller in sellers
+    ]
