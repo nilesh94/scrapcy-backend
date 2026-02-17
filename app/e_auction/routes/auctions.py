@@ -15,7 +15,8 @@ from app.e_auction.utils.exceptions import (
     ForbiddenException,
     InvalidDateRangeException,
     AuctionNotEditableException,
-    AuctionNotApprovedException
+    AuctionNotApprovedException,
+    AuctionNotLiveException
 )
 from app.e_auction.routes.auth_dependencies import (
     get_current_user_id,
@@ -103,7 +104,8 @@ async def get_auction_management_details(
         auction = AuctionService.get_by_id(db, auction_id)
         
         # Helper to get user ID and Role safely from dict
-        user_id = get_current_user_id(current_user)
+        # FIX: Ensure we await if this helper is async, or use direct dict access
+        user_id = current_user.get('id') 
         user_role = current_user.get('role')
         
         # 1. Admin Override - Can see everything
@@ -178,6 +180,9 @@ async def list_my_auctions(
     
     RBAC: Requires authentication
     """
+    # FIX: Added 'await' because get_current_user_id is async
+    user_id = await get_current_user_id(current_user)
+
     filters = AuctionFilterParams(
         created_by_me=True,
         status=status
@@ -188,7 +193,7 @@ async def list_my_auctions(
         filters=filters,
         page=page,
         page_size=page_size,
-        user_id=get_current_user_id(current_user)
+        user_id=user_id
     )
 
 
@@ -208,24 +213,25 @@ async def create_auction(
     
     RBAC: Requires SELLER or ADMIN role
     """
-    user_id = get_current_user_id(current_user)
-    user_role = current_user.get('role')
-
-    # 1. Determine Owner (Seller ID)
-    final_seller_id = user_id
-    
-    if user_role == "admin":
-        if not auction_data.seller_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Admin must select a Seller when creating an auction."
-            )
-        final_seller_id = auction_data.seller_id
-    else:
-        # Force sellers to only create for themselves
-        final_seller_id = user_id
-
     try:
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
+        user_role = current_user.get('role')
+
+        # 1. Determine Owner (Seller ID)
+        final_seller_id = user_id
+        
+        if user_role == "admin":
+            if not auction_data.seller_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Admin must select a Seller (seller_id) when creating an auction."
+                )
+            final_seller_id = auction_data.seller_id
+        else:
+            # Force sellers to only create for themselves
+            final_seller_id = user_id
+
         auction = AuctionService.create_auction(
             db=db,
             auction_data=auction_data,
@@ -255,7 +261,8 @@ async def update_auction(
     Service validates ownership
     """
     try:
-        user_id = get_current_user_id(current_user)
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
         
         updated_auction = AuctionService.update_auction(
             db=db,
@@ -288,7 +295,8 @@ async def delete_auction(
     RBAC: Only auction creator can delete
     """
     try:
-        user_id = get_current_user_id(current_user)
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
         
         AuctionService.delete_auction(
             db=db,
@@ -318,7 +326,8 @@ async def submit_auction_for_approval(
     RBAC: Only auction creator
     """
     try:
-        user_id = get_current_user_id(current_user)
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
         
         auction = AuctionService.submit_for_approval(
             db=db,
@@ -355,7 +364,8 @@ async def cancel_auction(
     RBAC: Only auction creator or ADMIN
     """
     try:
-        user_id = get_current_user_id(current_user)
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
         user_role = current_user.get('role')
         
         # Explicit Owner check before service call if strict validation needed here
@@ -424,7 +434,8 @@ async def approve_auction_l1(
     RBAC: Requires L1_APPROVER or ADMIN role
     """
     try:
-        user_id = get_current_user_id(current_user)
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
         
         auction = AuctionService.approve_l1(
             db=db,
@@ -458,7 +469,8 @@ async def approve_auction_l2(
     RBAC: Requires L2_APPROVER or ADMIN role
     """
     try:
-        user_id = get_current_user_id(current_user)
+        # FIX: Added 'await'
+        user_id = await get_current_user_id(current_user)
         
         auction = AuctionService.approve_l2(
             db=db,
@@ -527,9 +539,11 @@ async def get_auction_statistics(
     
     RBAC: Requires authentication
     """
+    # FIX: Added 'await'
+    user_id = await get_current_user_id(current_user)
     return AuctionService.get_auction_stats(
         db=db, 
-        user_id=get_current_user_id(current_user)
+        user_id=user_id
     )
 
 
