@@ -26,9 +26,16 @@ class AuctionNotFoundException(EAuctionException):
 
 class AuctionNotEditableException(EAuctionException):
     """Auction cannot be edited in current status"""
-    def __init__(self, auction_status: str):
+    def __init__(self, detail: str):
+        # Helper: If the input looks like a status code (e.g., "LIVE"), format it.
+        # Otherwise, treat it as a full error message.
+        if detail.isupper() and " " not in detail:
+             msg = f"Cannot edit auction in status: {detail}"
+        else:
+             msg = detail
+             
         super().__init__(
-            detail=f"Cannot edit auction in status: {auction_status}",
+            detail=msg,
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
