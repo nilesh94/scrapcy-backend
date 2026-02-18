@@ -287,35 +287,40 @@ async def upload_auction_document(
 @router.put("/{auction_id}", response_model=AuctionDetailResponse)
 async def update_auction(
     auction_id: int,
-    auction_data: AuctionUpdateRequest,
-    # ==== RBAC: Only auction creator can update ====
+    # ABSOLUTELY REQUIRED: Change to Form and File to support multipart upload during edit
+    data: str = Form(...), 
+    terms_doc: Optional[UploadFile] = File(None),
+    # ==== RBAC: Only auction creator or admin ====
     current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
 ):
     """
-    Update auction
-    
-    RBAC: Only auction creator can update
-    Service validates ownership
+    Update auction details and optionally upload/replace a T&C document.
     """
     try:
-        # ABSOLUTELY REQUIRED FIX: Extract ID directly from current_user object to avoid session errors
+        # Parse the stringified JSON from Form Data
+        auction_dict = json.loads(data)
+        auction_data = AuctionUpdateRequest(**auction_dict)
+
+        # Extract user info
         user_id = getattr(current_user, 'id', None) or current_user.get('id')
         
-        updated_auction = AuctionService.update_auction(
+        # Call service with the raw file for internal calculation
+        updated_auction = await AuctionService.update_auction(
             db=db,
             auction_id=auction_id,
             auction_data=auction_data,
-            user_id=user_id
+            user_id=user_id,
+            terms_file=terms_doc
         )
         
         return AuctionDetailResponse.model_validate(updated_auction)
+    except json.JSONDecodeError:
+         raise HTTPException(status_code=400, detail="Invalid JSON format in 'data' field")
     except AuctionNotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ForbiddenException as e:
         raise HTTPException(status_code=403, detail=str(e))
-    except AuctionNotEditableException as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
