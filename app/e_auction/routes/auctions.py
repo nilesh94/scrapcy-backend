@@ -257,6 +257,33 @@ async def create_auction(
         raise HTTPException(status_code=500, detail=f"Failed to create auction: {str(e)}")
 
 
+@router.post("/{auction_id}/upload-document")
+async def upload_auction_document(
+    auction_id: int,
+    document: UploadFile = File(...),
+    # ==== RBAC: Authenticated Users Only ====
+    current_user: dict = Depends(RequireAuth),
+    db: Session = Depends(get_db)
+):
+    """
+    ABSOLUTELY REQUIRED: New endpoint for View/Edit Page to upload document.
+    Calculation of path (filename + timestamp) happens internally in Service.
+    """
+    try:
+        user_id = getattr(current_user, 'id', None) or current_user.get('id')
+        doc_url = await AuctionService.upload_auction_document(
+            db=db,
+            auction_id=auction_id,
+            document=document,
+            user_id=user_id
+        )
+        return {"success": True, "url": doc_url}
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{auction_id}", response_model=AuctionDetailResponse)
 async def update_auction(
     auction_id: int,
