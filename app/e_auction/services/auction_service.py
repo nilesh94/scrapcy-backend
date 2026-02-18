@@ -51,17 +51,18 @@ class AuctionService:
         internal_doc_url = auction_data.auction_doc_url
         if terms_file:
             try:
-                # Process the file and get the Drive URL
-                # Note: terms_file.file is the file object expected by MediaIoBaseUpload
+                # REQUIREMENT: Filename + Timestamp separated by '___'
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                unique_filename = f"{terms_file.filename}___{timestamp}"
+
                 upload_res = upload_file_to_drive(
                     file_obj=terms_file.file, 
-                    filename=terms_file.filename, 
+                    filename=unique_filename, 
                     mime_type=terms_file.content_type
                 )
                 internal_doc_url = upload_res.get('url')
             except Exception as e:
                 print(f"Error uploading T&C to Drive: {str(e)}")
-                # We continue with creation even if upload fails, or you can raise an exception
 
         auction = Auction(
             # --- OWNERSHIP & AUDIT ---
@@ -147,6 +148,38 @@ class AuctionService:
         _ = auction.items # Accessing relationship triggers lazy load if not already loaded
         
         return auction
+
+    # --- Support for View/Edit Page Document Upload ---
+    @staticmethod
+    async def upload_auction_document(
+        db: Session,
+        auction_id: int,
+        document: UploadFile,
+        user_id: int
+    ) -> str:
+        """Upload or replace a document for an existing auction"""
+        auction = db.query(Auction).filter(Auction.id == auction_id).first()
+        if not auction:
+            raise AuctionNotFoundException(auction_id)
+
+        try:
+            # REQUIREMENT: Combination of filename and timestamp separated by '___'
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            unique_filename = f"{document.filename}___{timestamp}"
+
+            upload_res = upload_file_to_drive(
+                file_obj=document.file, 
+                filename=unique_filename, 
+                mime_type=document.content_type
+            )
+            file_url = upload_res.get('url')
+            
+            auction.auction_doc_url = file_url
+            auction.updated_at = datetime.now()
+            db.commit()
+            return file_url
+        except Exception as e:
+            raise Exception(f"Failed to upload document: {str(e)}")
     
     @staticmethod
     def get_by_id(db: Session, auction_id: int) -> Auction:
