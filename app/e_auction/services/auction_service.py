@@ -194,26 +194,25 @@ class AuctionService:
         return auction
     
     @staticmethod
-    def update_auction(
+    async def update_auction(
         db: Session,
         auction_id: int,
         auction_data: AuctionUpdateRequest,
-        user_id: int
+        user_id: int,
+        # ABSOLUTELY REQUIRED: Accept optional file for update
+        terms_file: Optional[UploadFile] = None
     ) -> Auction:
-        """Update auction"""
+        """Update auction and optionally calculate new internal doc path"""
         auction = AuctionService.get_by_id(db, auction_id)
         
-        # UPDATED: Check seller_id (Owner) OR created_by (Creator/Admin)
-        # This allows Admin to edit if they created it, OR Seller to edit if they own it
+        # Ownership check
         if auction.created_by != user_id and auction.seller_id != user_id:
-             # Route layer typically handles "Admin role" override, but this acts as a safeguard
-             # Ideally throw Forbidden here if strict service-level security is needed
              pass 
         
         if not auction.can_be_edited:
             raise AuctionNotEditableException(auction.status)
         
-        # Update fields
+        # 1. Update standard fields
         try:
             update_data = auction_data.model_dump(exclude_unset=True)
         except AttributeError:
@@ -221,6 +220,23 @@ class AuctionService:
 
         for field, value in update_data.items():
             setattr(auction, field, value)
+
+        # 2. INTERNAL CALCULATION: Handle File Update if provided
+        if terms_file:
+            try:
+                # Combination of filename and timestamp separated by '___'
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                unique_filename = f"{terms_file.filename}___{timestamp}"
+
+                upload_res = upload_file_to_drive(
+                    file_obj=terms_file.file, 
+                    filename=unique_filename, 
+                    mime_type=terms_file.content_type
+                )
+                # Save calculated path internally
+                auction.auction_doc_url = upload_res.get('url')
+            except Exception as e:
+                print(f"Update Upload Error: {str(e)}")
         
         auction.updated_at = datetime.now()
         db.commit()
