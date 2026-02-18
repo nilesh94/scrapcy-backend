@@ -3,9 +3,10 @@ Auction Routes
 API endpoints for auction management
 All endpoints have RBAC placeholders (commented for testing)
 """
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from typing import Optional
+import json
 
 from app.database.connection import get_db
 from app.e_auction.services import AuctionService
@@ -203,18 +204,24 @@ async def list_my_auctions(
 
 @router.post("", response_model=AuctionDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_auction(
-    auction_data: AuctionCreateRequest,
+    # ABSOLUTELY REQUIRED FIX: Change to Form and File to support multipart upload
+    data: str = Form(...), 
+    terms_doc: Optional[UploadFile] = File(None),
     # ==== RBAC: Only SELLER or ADMIN can create ====
     current_user: dict = Depends(RequireSeller),
     db: Session = Depends(get_db)
 ):
     """
-    Create new auction
+    Create new auction with optional file upload
     
     RBAC: Requires SELLER or ADMIN role
     """
     try:
-        # ABSOLUTELY REQUIRED FIX: Extract ID directly from current_user object to avoid session errors
+        # ABSOLUTELY REQUIRED FIX: Parse stringified JSON from Form Data
+        auction_dict = json.loads(data)
+        # Convert dict to Schema for validation
+        auction_data = AuctionCreateRequest(**auction_dict)
+
         user_id = getattr(current_user, 'id', None) or current_user.get('id')
         user_role = getattr(current_user, 'role', None) or current_user.get('role')
 
@@ -232,14 +239,18 @@ async def create_auction(
             # Force sellers to only create for themselves
             final_seller_id = user_id
 
-        auction = AuctionService.create_auction(
+        # Pass the raw file to the service for internal calculation/upload
+        auction = await AuctionService.create_auction(
             db=db,
             auction_data=auction_data,
             seller_id=final_seller_id,
-            created_by_user_id=user_id
+            created_by_user_id=user_id,
+            terms_file=terms_doc
         )
         
         return AuctionDetailResponse.model_validate(auction)
+    except json.JSONDecodeError:
+         raise HTTPException(status_code=400, detail="Invalid JSON format in 'data' field")
     except InvalidDateRangeException as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
