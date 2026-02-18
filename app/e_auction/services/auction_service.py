@@ -7,6 +7,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from datetime import datetime
+from fastapi import UploadFile
 
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
@@ -14,17 +15,21 @@ from app.e_auction.utils.exceptions import *
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus, LotStatus
 from app.e_auction.config import settings
 
+# ABSOLUTELY REQUIRED: Import Drive Utils for internal file processing
+from app.utils.driveUtils import upload_file_to_drive
 
 class AuctionService:
     """Auction management service - all operations for auctions"""
     
     @staticmethod
-    def create_auction(
+    async def create_auction(
         db: Session,
         auction_data: AuctionCreateRequest,
         # ADDED: seller_id determines ownership, created_by determines audit
         seller_id: int, 
-        created_by_user_id: int
+        created_by_user_id: int,
+        # ABSOLUTELY REQUIRED: Accept terms_file for internal calculation
+        terms_file: Optional[UploadFile] = None
     ) -> Auction:
         """Create new auction"""
         # Validate dates
@@ -41,6 +46,22 @@ class AuctionService:
         # Create Auction Instance
         # Convert Enum to string for DB if necessary, or pass raw if driver handles it
         auction_type_str = str(auction_data.auction_type.value) if hasattr(auction_data.auction_type, 'value') else auction_data.auction_type
+
+        # --- ABSOLUTELY REQUIRED: INTERNAL CALCULATION FOR FILE PATH ---
+        internal_doc_url = auction_data.auction_doc_url
+        if terms_file:
+            try:
+                # Process the file and get the Drive URL
+                # Note: terms_file.file is the file object expected by MediaIoBaseUpload
+                upload_res = upload_file_to_drive(
+                    file_obj=terms_file.file, 
+                    filename=terms_file.filename, 
+                    mime_type=terms_file.content_type
+                )
+                internal_doc_url = upload_res.get('url')
+            except Exception as e:
+                print(f"Error uploading T&C to Drive: {str(e)}")
+                # We continue with creation even if upload fails, or you can raise an exception
 
         auction = Auction(
             # --- OWNERSHIP & AUDIT ---
@@ -71,7 +92,8 @@ class AuctionService:
             inspection_contact_person=auction_data.inspection_contact_person,
             inspection_contact_number=auction_data.inspection_contact_number,
             terms_and_conditions=auction_data.terms_and_conditions,
-            auction_doc_url=auction_data.auction_doc_url,
+            # Use the calculated doc URL
+            auction_doc_url=internal_doc_url,
         )
         
         db.add(auction)
