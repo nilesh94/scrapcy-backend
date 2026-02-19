@@ -11,6 +11,7 @@ import json
 from app.database.connection import get_db
 from app.e_auction.services import AuctionService
 from app.e_auction.schemas.auction import *
+from app.e_auction.schemas.auction_item import LotUpdateRequest, LotDetailResponse
 from app.e_auction.utils.exceptions import (
     AuctionNotFoundException,
     ForbiddenException,
@@ -208,7 +209,7 @@ async def create_auction(
     data: str = Form(...), 
     terms_doc: Optional[UploadFile] = File(None),
     # UPDATED: Accept multiple lot images
-    lot_images: List[UploadFile] = File(...),
+    lot_images: Optional[List[UploadFile]] = File(None),
     # ==== RBAC: Only SELLER or ADMIN can create ====
     current_user: dict = Depends(RequireSeller),
     db: Session = Depends(get_db)
@@ -329,6 +330,32 @@ async def update_auction(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- ABSOLUTELY REQUIRED: New Independent Route for Individual Lot Updates via Modal ---
+@router.put("/lots/{lot_id}", response_model=LotDetailResponse)
+async def update_lot_independent(
+    lot_id: int,
+    lot_data: str = Form(...), 
+    lot_images: Optional[List[UploadFile]] = File(None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(RequireAuth)
+):
+    """Update specific lot including new image uploads via multipart from modal"""
+    try:
+        data_dict = json.loads(lot_data)
+        lot_request = LotUpdateRequest(**data_dict)
+        
+        updated_lot = await AuctionService.update_specific_lot(
+            db=db,
+            lot_id=lot_id,
+            lot_data=lot_request,
+            images=lot_images,
+            delete_image_ids=data_dict.get('delete_image_ids', [])
+        )
+        return LotDetailResponse.model_validate(updated_lot)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lot Update Error: {str(e)}")
 
 
 @router.delete("/{auction_id}", status_code=status.HTTP_204_NO_CONTENT)
