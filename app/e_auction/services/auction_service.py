@@ -18,6 +18,8 @@ from app.e_auction.config import settings
 # ABSOLUTELY REQUIRED: Import Drive Utils for internal file processing
 from app.utils.driveUtils import upload_file_to_drive
 
+from app.e_auction.models.auction_item_images import AuctionItemImage
+
 class AuctionService:
     """Auction management service - all operations for auctions"""
     
@@ -453,3 +455,46 @@ class AuctionService:
             # Count total lots based on auctions
             total_lots=db.query(func.count(AuctionItem.id)).scalar() or 0
         )
+
+    @staticmethod
+    async def save_lot_images(db: Session, lot_id: int, images: List[UploadFile]):
+        uploaded_results = []
+        
+        for idx, img in enumerate(images):
+            try:
+                # 1. Capture original metadata for DB Audit
+                img.file.seek(0, 2)
+                size_in_bytes = img.file.tell()
+                img.file.seek(0)
+                original_name = img.filename # e.g. "car_front.jpg"
+
+                # 2. Generate unique internal path for storage
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                unique_storage_name = f"lot_{lot_id}_{original_name}___{timestamp}"
+
+                # 3. Physical Upload
+                drive_res = upload_file_to_drive(
+                    file_obj=img.file,
+                    filename=unique_storage_name,
+                    mime_type=img.content_type
+                )
+
+                # 4. Save Record to auction_item_images table
+                new_image = AuctionItemImage(
+                    item_id=lot_id,
+                    image_url=drive_res.get('url'),
+                    file_name=original_name,           # Clean name for easy search/audit
+                    drive_file_id=drive_res.get('id'), # Unique Drive ID
+                    file_size=size_in_bytes,
+                    is_primary=1 if idx == 0 else 0,
+                    display_order=idx
+                )
+                
+                db.add(new_image)
+                uploaded_results.append(drive_res.get('url'))
+
+            except Exception as e:
+                print(f"Audit Log: Failed upload for {img.filename} in lot {lot_id}: {str(e)}")
+        
+        db.commit()
+        return {"lot_id": lot_id, "success_count": len(uploaded_results)}
