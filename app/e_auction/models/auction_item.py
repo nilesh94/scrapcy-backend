@@ -6,6 +6,7 @@ from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, CLOB, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
+from app.e_auction.models.auction_item_images import AuctionItemImage
 
 
 class AuctionItem(Base):
@@ -102,6 +103,9 @@ class AuctionItem(Base):
     
     # Audit
     created_at = Column("CREATED_AT", TIMESTAMP(6), server_default=func.current_timestamp())
+
+    # --- Link images table to this Lot ---
+    images = relationship("AuctionItemImage", back_populates="item", cascade="all, delete-orphan", lazy="joined")
     
     # Relationships
     auction = relationship("Auction", back_populates="items")
