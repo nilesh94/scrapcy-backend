@@ -11,6 +11,7 @@ from fastapi import UploadFile
 
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
+from app.e_auction.schemas.auction_item import LotUpdateRequest
 from app.e_auction.utils.exceptions import *
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus, LotStatus
 from app.e_auction.config import settings
@@ -162,6 +163,47 @@ class AuctionService:
         _ = auction.items # Accessing relationship triggers lazy load if not already loaded
         
         return auction
+
+    # --- SUPPORT FOR MODAL UPDATES: New Method ---
+    @staticmethod
+    async def update_specific_lot(
+        db: Session,
+        lot_id: int,
+        lot_data: LotUpdateRequest,
+        images: Optional[List[UploadFile]] = None,
+        delete_image_ids: Optional[List[int]] = None
+    ) -> AuctionItem:
+        """Update a single lot and manage its images via modal"""
+        lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
+        if not lot:
+            raise AuctionNotFoundException(lot_id)
+
+        # 1. Update text fields
+        try:
+            update_dict = lot_data.model_dump(exclude_unset=True)
+        except AttributeError:
+            update_dict = lot_data.dict(exclude_unset=True)
+
+        for field, value in update_dict.items():
+            setattr(lot, field, value)
+
+        # 2. Handle Image Deletions
+        if delete_image_ids:
+            db.query(AuctionItemImage).filter(
+                AuctionItemImage.id.in_(delete_image_ids),
+                AuctionItemImage.item_id == lot_id
+            ).delete(synchronize_session=False)
+
+        # 3. Handle New Image Uploads
+        if images:
+            # We use "lot_0_" filtering because frontend uses lot_0_ prefix for single item PUTs
+            lot_specific_files = [f for f in images if "lot_0_" in f.filename]
+            if lot_specific_files:
+                await AuctionService.save_lot_images(db, lot_id, lot_specific_files)
+
+        db.commit()
+        db.refresh(lot)
+        return lot
 
     # --- Support for View/Edit Page Document Upload ---
     @staticmethod
