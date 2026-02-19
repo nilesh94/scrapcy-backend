@@ -12,7 +12,7 @@ class AuctionItemImage(Base):
     __table_args__ = {"schema": "scrapcy_app"}
 
     id = Column(Integer, primary_key=True, index=True)
-    item_id = Column(Integer, ForeignKey("scrapcy_app.auction_items.id", ondelete="CASCADE"), nullable=False)
+    item_id = Column(Integer, ForeignKey("SCRAPCY_APP.AUCTION_ITEMS.ID", ondelete="CASCADE"), nullable=False)
     image_url = Column(String(1000), nullable=False)
     file_name = Column(String(255), nullable=False)
     drive_file_id = Column(String(255), unique=True)
