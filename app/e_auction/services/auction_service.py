@@ -31,7 +31,9 @@ class AuctionService:
         seller_id: int, 
         created_by_user_id: int,
         # ABSOLUTELY REQUIRED: Accept terms_file for internal calculation
-        terms_file: Optional[UploadFile] = None
+        terms_file: Optional[UploadFile] = None,
+        # ADDED: Accept lot images for integrated creation
+        lot_images: Optional[List[UploadFile]] = None
     ) -> Auction:
         """Create new auction"""
         # Validate dates
@@ -103,7 +105,7 @@ class AuctionService:
         db.flush() # Generate ID without committing transaction yet
         
         # Create Lots
-        for lot_req in lots_data:
+        for lot_idx, lot_req in enumerate(lots_data):
             # Convert Pydantic model to dict, excluding unset/nulls
             # Support both Pydantic v1 (dict) and v2 (model_dump)
             try:
@@ -138,6 +140,16 @@ class AuctionService:
                 **lot_dict
             )
             db.add(new_lot)
+            db.flush()
+
+            # --- ADDED: Integrated Lot Image Upload ---
+            if lot_images:
+                # Filter images belonging to this lot index (e.g. lot_0_file_X)
+                lot_specific_files = [f for f in lot_images if f.filename.startswith(f"lot_{lot_idx}_")]
+                if lot_specific_files:
+                    await AuctionService.save_lot_images(db, new_lot.id, lot_specific_files)
+                elif not lot_dict.get('id'): # For new auctions, enforce 1 image
+                    raise InvalidDateRangeException(f"Lot {lot_idx + 1} requires at least one image")
         
         # Update total lots count on auction
         auction.total_lots = len(lots_data)
@@ -202,7 +214,9 @@ class AuctionService:
         auction_data: AuctionUpdateRequest,
         user_id: int,
         # ABSOLUTELY REQUIRED: Accept optional file for update
-        terms_file: Optional[UploadFile] = None
+        terms_file: Optional[UploadFile] = None,
+        # ADDED: Accept lot images for integrated update
+        lot_images: Optional[List[UploadFile]] = None
     ) -> Auction:
         """Update auction and optionally calculate new internal doc path"""
         auction = AuctionService.get_by_id(db, auction_id)
@@ -219,6 +233,9 @@ class AuctionService:
             update_data = auction_data.model_dump(exclude_unset=True)
         except AttributeError:
             update_data = auction_data.dict(exclude_unset=True)
+
+        # Separate lots data for processing
+        lots_update_data = update_data.pop('lots', [])
 
         for field, value in update_data.items():
             setattr(auction, field, value)
@@ -239,6 +256,19 @@ class AuctionService:
                 auction.auction_doc_url = upload_res.get('url')
             except Exception as e:
                 print(f"Update Upload Error: {str(e)}")
+
+        # 3. Handle Lot and Image Updates
+        for idx, lot_data in enumerate(lots_update_data):
+            lot_id = lot_data.get('id')
+            # Handle image deletions if flags provided in JSON
+            if lot_data.get('delete_image_ids'):
+                db.query(AuctionItemImage).filter(AuctionItemImage.id.in_(lot_data['delete_image_ids'])).delete(synchronize_session=False)
+
+            # Handle new uploads for this lot index
+            if lot_images and lot_id:
+                lot_specific_files = [f for f in lot_images if f.filename.startswith(f"lot_{idx}_")]
+                if lot_specific_files:
+                    await AuctionService.save_lot_images(db, lot_id, lot_specific_files)
         
         auction.updated_at = datetime.now()
         db.commit()
