@@ -322,6 +322,9 @@ class LotDetailResponse(BaseModel):
     condition_rating: Optional[int] = None
     is_featured: bool = False
     seller_notes: Optional[str] = None
+
+    # --- Include the images list in the response ---
+    images: List[LotImageResponse] = []
     
     # Auction Type Specific
     decrement_amount: Optional[Decimal] = None
