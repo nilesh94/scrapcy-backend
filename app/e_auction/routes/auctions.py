@@ -5,7 +5,7 @@ All endpoints have RBAC placeholders (commented for testing)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, status, File, UploadFile, Form
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 import json
 
 from app.database.connection import get_db
@@ -207,6 +207,8 @@ async def create_auction(
     # ABSOLUTELY REQUIRED FIX: Change to Form and File to support multipart upload
     data: str = Form(...), 
     terms_doc: Optional[UploadFile] = File(None),
+    # UPDATED: Accept multiple lot images
+    lot_images: List[UploadFile] = File(...),
     # ==== RBAC: Only SELLER or ADMIN can create ====
     current_user: dict = Depends(RequireSeller),
     db: Session = Depends(get_db)
@@ -217,7 +219,7 @@ async def create_auction(
     RBAC: Requires SELLER or ADMIN role
     """
     try:
-        # ABSOLUTELY REQUIRED FIX: Parse stringified JSON from Form Data
+        #Parse stringified JSON from Form Data
         auction_dict = json.loads(data)
         # Convert dict to Schema for validation
         auction_data = AuctionCreateRequest(**auction_dict)
@@ -245,7 +247,8 @@ async def create_auction(
             auction_data=auction_data,
             seller_id=final_seller_id,
             created_by_user_id=user_id,
-            terms_file=terms_doc
+            terms_file=terms_doc,
+            lot_images=lot_images
         )
         
         return AuctionDetailResponse.model_validate(auction)
@@ -290,6 +293,8 @@ async def update_auction(
     # ABSOLUTELY REQUIRED: Change to Form and File to support multipart upload during edit
     data: str = Form(...), 
     terms_doc: Optional[UploadFile] = File(None),
+    #Accept optional new lot images
+    lot_images: Optional[List[UploadFile]] = File(None),
     # ==== RBAC: Only auction creator or admin ====
     current_user: dict = Depends(RequireAuth),
     db: Session = Depends(get_db)
@@ -311,7 +316,8 @@ async def update_auction(
             auction_id=auction_id,
             auction_data=auction_data,
             user_id=user_id,
-            terms_file=terms_doc
+            terms_file=terms_doc,
+            lot_images=lot_images
         )
         
         return AuctionDetailResponse.model_validate(updated_auction)
