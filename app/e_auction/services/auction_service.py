@@ -144,8 +144,8 @@ class AuctionService:
 
             # --- ADDED: Integrated Lot Image Upload ---
             if lot_images:
-                # Filter images belonging to this lot index (e.g. lot_0_file_X)
-                lot_specific_files = [f for f in lot_images if f.filename.startswith(f"lot_{lot_idx}_")]
+                # FIXED: Use "in" check for robust matching with frontend renamed files (lot_0_file_0...)
+                lot_specific_files = [f for f in lot_images if f"lot_{lot_idx}_" in f.filename]
                 if lot_specific_files:
                     await AuctionService.save_lot_images(db, new_lot.id, lot_specific_files)
                 elif not lot_dict.get('id'): # For new auctions, enforce 1 image
@@ -266,7 +266,8 @@ class AuctionService:
 
             # Handle new uploads for this lot index
             if lot_images and lot_id:
-                lot_specific_files = [f for f in lot_images if f.filename.startswith(f"lot_{idx}_")]
+                # FIXED: Robust matching for integrated update
+                lot_specific_files = [f for f in lot_images if f"lot_{idx}_" in f.filename]
                 if lot_specific_files:
                     await AuctionService.save_lot_images(db, lot_id, lot_specific_files)
         
@@ -496,11 +497,15 @@ class AuctionService:
                 img.file.seek(0, 2)
                 size_in_bytes = img.file.tell()
                 img.file.seek(0)
-                original_name = img.filename # e.g. "car_front.jpg"
+                
+                # FIXED: Cleanup original_name to remove internal prefixes for a cleaner DB Audit
+                original_name = img.filename
+                if "___" in original_name: original_name = original_name.split("___")[-1]
+                if "_file_" in original_name: original_name = original_name.split("_", 3)[-1]
 
                 # 2. Generate unique internal path for storage
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                unique_storage_name = f"lot_{lot_id}_{original_name}___{timestamp}"
+                unique_storage_name = f"lot_{lot_id}_{timestamp}_{idx}"
 
                 # 3. Physical Upload
                 drive_res = upload_file_to_drive(
@@ -524,7 +529,9 @@ class AuctionService:
                 uploaded_results.append(drive_res.get('url'))
 
             except Exception as e:
-                print(f"Audit Log: Failed upload for {img.filename} in lot {lot_id}: {str(e)}")
+                # ADDED: DEBUG log to identify why uploads might fail
+                print(f"DEBUG: Failed upload for {img.filename} in lot {lot_id}: {str(e)}")
         
-        db.commit()
+        # FIXED: Removed db.commit() to allow parent methods (create/update) to control the transaction
+        db.flush()
         return {"lot_id": lot_id, "success_count": len(uploaded_results)}
