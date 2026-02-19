@@ -171,12 +171,23 @@ class AuctionService:
         lot_id: int,
         lot_data: LotUpdateRequest,
         images: Optional[List[UploadFile]] = None,
-        delete_image_ids: Optional[List[int]] = None
+        delete_image_ids: Optional[List[int]] = None,
+        current_user_id: int = None,
+        current_user_role: str = None
     ) -> AuctionItem:
-        """Update a single lot and manage its images via modal"""
+        """Update a single lot and manage its images via modal with RBAC"""
         lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
         if not lot:
             raise AuctionNotFoundException(lot_id)
+
+        # --- RBAC CHECK ---
+        # Allow Admin to edit anything. 
+        # For others, check if they are the creator of the parent auction.
+        if current_user_role != "admin":
+            auction = db.query(Auction).filter(Auction.id == lot.auction_id).first()
+            if not auction or auction.created_by != current_user_id:
+                raise ForbiddenException("You do not have permission to edit this lot.")
+        # --- END RBAC CHECK ---
 
         # 1. Update text fields
         try:
