@@ -179,9 +179,12 @@ class Settings(BaseSettings):
     FEATURE_BUY_NOW_ENABLED: bool = True
     FEATURE_WATCHLIST_ENABLED: bool = True
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    #Using Pydantic V2 model_config for the latest standards
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+        "extra": "ignore"
+    }
 
 
 @lru_cache()
