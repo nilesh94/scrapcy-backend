@@ -195,6 +195,18 @@ class LotFilterParams(BaseModel):
 # RESPONSE SCHEMAS
 # ============================================================================
 
+class LotImageResponse(BaseModel):
+    """Response model for lot images"""
+    id: int
+    image_url: str
+    file_name: str
+    is_primary: int
+    display_order: int
+
+    class Config:
+        from_attributes = True
+
+
 class LotBasicResponse(BaseModel):
     """Basic lot information for list views"""
     id: int
