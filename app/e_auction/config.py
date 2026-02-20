@@ -2,7 +2,7 @@
 E-Auction Module Configuration
 Multi-environment support (local, development, staging, production)
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
 from functools import lru_cache
 from enum import Enum
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     
     @property
     def DATABASE_URL(self) -> str:
+        #Check if we are on Render (which uses Environment.PRODUCTION)
         if self.APP_ENV == Environment.PRODUCTION and self.PROD_DATABASE_URL:
             return self.PROD_DATABASE_URL
         return self.LOCAL_DATABASE_URL
@@ -179,12 +180,12 @@ class Settings(BaseSettings):
     FEATURE_BUY_NOW_ENABLED: bool = True
     FEATURE_WATCHLIST_ENABLED: bool = True
     
-    #Using Pydantic V2 model_config for the latest standards
-    model_config = {
-        "env_file": ".env",
-        "case_sensitive": True,
-        "extra": "ignore"
-    }
+    # UPDATED: Use SettingsConfigDict for Pydantic V2
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore"
+    )
 
 
 @lru_cache()
