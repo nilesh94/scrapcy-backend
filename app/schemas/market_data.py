@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -20,8 +20,8 @@ class LocationResponse(LocationBase):
     id: int
     is_active: int
 
-    class Config:
-        orm_mode = True
+    # UPDATED for Pydantic V2
+    model_config = ConfigDict(from_attributes=True)
 
 # --- MARKET PRICE SCHEMAS ---
 class MarketPriceBase(BaseModel):
@@ -39,20 +39,23 @@ class MarketPriceCreate(MarketPriceBase):
 class CategorySimple(BaseModel):
     id: int
     material_category: str
-    class Config:
-        orm_mode = True
+    
+    # UPDATED for Pydantic V2
+    model_config = ConfigDict(from_attributes=True)
 
 class MaterialSimple(BaseModel):
     id: int
     material_name: str
-    class Config:
-        orm_mode = True
+    
+    # UPDATED for Pydantic V2
+    model_config = ConfigDict(from_attributes=True)
 
 class GradeSimple(BaseModel):
     id: int
     grade_name: str
-    class Config:
-        orm_mode = True
+    
+    # UPDATED for Pydantic V2
+    model_config = ConfigDict(from_attributes=True)
 
 class MarketPriceResponse(MarketPriceBase):
     id: int
@@ -64,5 +67,5 @@ class MarketPriceResponse(MarketPriceBase):
     material: Optional[MaterialSimple]
     grade: Optional[GradeSimple]
 
-    class Config:
-        orm_mode = True
+    # UPDATED for Pydantic V2
+    model_config = ConfigDict(from_attributes=True)
