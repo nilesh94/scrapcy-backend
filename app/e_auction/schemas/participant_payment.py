@@ -1,7 +1,7 @@
 """
 Participant and Payment Pydantic Schemas
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -16,18 +16,20 @@ class AuctionRegistrationRequest(BaseModel):
     """Request to register for an auction"""
     agreed_to_terms: bool = Field(..., description="Must agree to terms and conditions")
     
-    @validator('agreed_to_terms')
+    @field_validator('agreed_to_terms')
+    @classmethod
     def terms_must_be_accepted(cls, v):
         if not v:
             raise ValueError('You must agree to terms and conditions')
         return v
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "agreed_to_terms": True
             }
         }
+    )
 
 
 class ParticipantResponse(BaseModel):
@@ -58,8 +60,7 @@ class ParticipantResponse(BaseModel):
     is_approved: bool = False
     can_bid: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ParticipantListResponse(BaseModel):
@@ -68,6 +69,7 @@ class ParticipantListResponse(BaseModel):
     total_participants: int
     approved_participants: int
     participants: List[ParticipantResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RegistrationSuccessResponse(BaseModel):
@@ -87,7 +89,7 @@ class RegistrationSuccessResponse(BaseModel):
     payment_order_id: Optional[str] = None
     payment_url: Optional[str] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -101,6 +103,7 @@ class RegistrationSuccessResponse(BaseModel):
                 "payment_url": "https://razorpay.com/payment/..."
             }
         }
+    )
 
 
 # ============================================================================
@@ -117,7 +120,7 @@ class PaymentInitiateRequest(BaseModel):
     # Payment method preference
     payment_method: Optional[PaymentMethod] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "payment_type": "EMD",
@@ -126,6 +129,7 @@ class PaymentInitiateRequest(BaseModel):
                 "payment_method": "UPI"
             }
         }
+    )
 
 
 class PaymentVerifyRequest(BaseModel):
@@ -134,7 +138,7 @@ class PaymentVerifyRequest(BaseModel):
     payment_signature: Optional[str] = Field(None, description="Payment signature from gateway")
     order_id: Optional[str] = Field(None, description="Order ID from payment initiation")
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "transaction_id": "pay_123456789",
@@ -142,6 +146,7 @@ class PaymentVerifyRequest(BaseModel):
                 "order_id": "order_123456"
             }
         }
+    )
 
 
 class PaymentInitiateResponse(BaseModel):
@@ -160,7 +165,7 @@ class PaymentInitiateResponse(BaseModel):
     # Expiry
     expires_at: datetime
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -174,6 +179,7 @@ class PaymentInitiateResponse(BaseModel):
                 "expires_at": "2025-02-15T12:00:00"
             }
         }
+    )
 
 
 class PaymentVerifyResponse(BaseModel):
@@ -187,7 +193,7 @@ class PaymentVerifyResponse(BaseModel):
     payment_method: Optional[str] = None
     processed_at: Optional[datetime] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -200,6 +206,7 @@ class PaymentVerifyResponse(BaseModel):
                 "processed_at": "2025-02-15T10:30:00"
             }
         }
+    )
 
 
 class PaymentResponse(BaseModel):
@@ -233,8 +240,7 @@ class PaymentResponse(BaseModel):
     is_pending: bool = False
     is_refunded: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaymentListResponse(BaseModel):
@@ -244,6 +250,7 @@ class PaymentListResponse(BaseModel):
     page_size: int
     total_pages: int
     payments: List[PaymentResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaymentHistoryResponse(BaseModel):
@@ -257,6 +264,7 @@ class PaymentHistoryResponse(BaseModel):
     failed_payments: int = 0
     
     payments: List[PaymentResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RefundRequest(BaseModel):
@@ -265,7 +273,7 @@ class RefundRequest(BaseModel):
     reason: str = Field(..., min_length=10, max_length=500)
     refund_amount: Optional[Decimal] = Field(None, gt=0, description="Partial refund amount (optional)")
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "payment_id": 789,
@@ -273,6 +281,7 @@ class RefundRequest(BaseModel):
                 "refund_amount": 50000.00
             }
         }
+    )
 
 
 class RefundResponse(BaseModel):
@@ -284,7 +293,7 @@ class RefundResponse(BaseModel):
     refund_transaction_id: Optional[str] = None
     refund_status: str
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -294,6 +303,7 @@ class RefundResponse(BaseModel):
                 "refund_status": "PROCESSING"
             }
         }
+    )
 
 
 # ============================================================================
@@ -318,6 +328,7 @@ class PaymentStatsResponse(BaseModel):
     pending_transactions: int = 0
     failed_transactions: int = 0
     refunded_transactions: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
