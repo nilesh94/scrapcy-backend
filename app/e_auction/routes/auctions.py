@@ -66,6 +66,63 @@ async def browse_auctions(
     )
 
 
+@router.get("/listing", response_model=AuctionListResponse)
+async def get_public_listing(
+    category: Optional[str] = None,
+    region: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    [OPEN API] Specialized endpoint for Buyers to see Auction listings.
+    Strictly restricted to LIVE and SCHEDULED auctions only.
+    """
+    filters = AuctionFilterParams(
+        status=None,
+        category=category,
+        region=region,
+        search=search
+    )
+    
+    return AuctionService.list_auctions(
+        db=db,
+        filters=filters,
+        page=page,
+        page_size=page_size,
+        public_view=True
+    )
+
+
+@router.get("/listing/{auction_id}", response_model=AuctionDetailResponse, response_model_exclude={
+    "created_by", "seller_id", "emd_amount", "registration_fee",
+    "l1_approved_by", "l1_approved_at", "l1_remarks", 
+    "l2_approved_by", "l2_approved_at", "l2_remarks", 
+    "rejection_reason", "actual_start_time", "actual_end_time", "published_at"
+})
+async def get_public_auction_listing_detail(
+    auction_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    [OPEN API] Get specific auction and lot details for buyers.
+    """
+    try:
+        auction = AuctionService.get_by_id(db, auction_id)
+        
+        public_allowed = [AuctionStatus.LIVE, AuctionStatus.SCHEDULED, AuctionStatus.CLOSED]
+        if auction.status not in public_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Auction listing is not available to the public."
+            )
+            
+        return AuctionDetailResponse.model_validate(auction)
+    except AuctionNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/{auction_id}", response_model=AuctionDetailResponse)
 async def get_auction_detail(
     auction_id: int,
