@@ -24,6 +24,7 @@ class RequirementBase(BaseModel):
     guest_company: Optional[str] = Field(default=None, alias="guestCompany")
     guest_gst: Optional[str] = Field(default=None, alias="guestGst")
 
+    # Correct V2 Configuration
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     @field_validator('guest_email', 'guest_name', 'guest_phone', 'guest_company', 'guest_gst', 'note', mode='before')
@@ -45,5 +46,6 @@ class RequirementOut(RequirementBase):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    # UPDATED: Removed 'class Config' and replaced with V2 standard model_config
+    # (Though it inherits from RequirementBase, being explicit ensures the warning disappears)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
