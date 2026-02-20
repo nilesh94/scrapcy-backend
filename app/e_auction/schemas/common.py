@@ -2,7 +2,7 @@
 Common Pydantic Schemas
 Base models and shared schemas used across the application
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Any, Dict
 from datetime import datetime
 from decimal import Decimal
@@ -17,8 +17,7 @@ class ResponseBase(BaseModel):
     success: bool = True
     message: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedResponse(BaseModel):
@@ -29,8 +28,7 @@ class PaginatedResponse(BaseModel):
     total_pages: int
     data: List[dict]
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -62,9 +60,10 @@ class DateRangeFilter(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     
-    @validator('end_date')
-    def end_date_must_be_after_start(cls, v, values):
-        if v and values.get('start_date') and v < values['start_date']:
+    @field_validator('end_date')
+    @classmethod
+    def end_date_must_be_after_start(cls, v, info):
+        if v and info.data.get('start_date') and v < info.data['start_date']:
             raise ValueError('end_date must be after start_date')
         return v
 
@@ -74,9 +73,10 @@ class PriceRangeFilter(BaseModel):
     min_price: Optional[Decimal] = Field(None, ge=0)
     max_price: Optional[Decimal] = Field(None, ge=0)
     
-    @validator('max_price')
-    def max_price_must_be_greater(cls, v, values):
-        if v and values.get('min_price') and v < values['min_price']:
+    @field_validator('max_price')
+    @classmethod
+    def max_price_must_be_greater(cls, v, info):
+        if v and info.data.get('min_price') and v < info.data['min_price']:
             raise ValueError('max_price must be greater than min_price')
         return v
 
@@ -107,8 +107,7 @@ class AuditInfo(BaseModel):
     updated_at: Optional[datetime] = None
     created_by: Optional[int] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -123,8 +122,7 @@ class StatusResponse(BaseModel):
     can_delete: bool = False
     can_approve: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -140,8 +138,7 @@ class FileUploadResponse(BaseModel):
     mime_type: str
     uploaded_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ImageInfo(BaseModel):
@@ -182,8 +179,7 @@ class ApprovalInfo(BaseModel):
     approved_at: Optional[datetime] = None
     remarks: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ApprovalRequest(BaseModel):
