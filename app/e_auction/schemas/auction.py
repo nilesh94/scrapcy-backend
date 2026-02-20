@@ -2,7 +2,7 @@
 Auction Pydantic Schemas
 Request and Response models for Auction endpoints
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict # Updated imports
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -63,20 +63,23 @@ class AuctionCreateRequest(BaseModel):
     # Allow creating lots in the same request
     lots: Optional[List[LotCreateRequest]] = Field(default=[], description="List of lots to create immediately")
     
-    @validator('scheduled_end_time')
-    def end_time_after_start(cls, v, values):
-        if 'scheduled_start_time' in values and v <= values['scheduled_start_time']:
+    # UPDATED: Using field_validator for V2
+    @field_validator('scheduled_end_time')
+    @classmethod
+    def end_time_after_start(cls, v: datetime, info) -> datetime:
+        if 'scheduled_start_time' in info.data and v <= info.data['scheduled_start_time']:
             raise ValueError('scheduled_end_time must be after scheduled_start_time')
         return v
     
-    @validator('inspection_end_date')
-    def inspection_end_after_start(cls, v, values):
-        if v and 'inspection_start_date' in values and values['inspection_start_date']:
-            if v <= values['inspection_start_date']:
+    @field_validator('inspection_end_date')
+    @classmethod
+    def inspection_end_after_start(cls, v: datetime, info) -> datetime:
+        if v and 'inspection_start_date' in info.data and info.data['inspection_start_date']:
+            if v <= info.data['inspection_start_date']:
                 raise ValueError('inspection_end_date must be after inspection_start_date')
         return v
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "auction_title": "Industrial Scrap Metal Auction - January 2025",
@@ -103,6 +106,7 @@ class AuctionCreateRequest(BaseModel):
                 ]
             }
         }
+    )
 
 
 class AuctionUpdateRequest(BaseModel):
@@ -126,19 +130,19 @@ class AuctionUpdateRequest(BaseModel):
     inspection_location: Optional[str] = Field(None, max_length=500)
     inspection_contact_person: Optional[str] = Field(None, max_length=255)
     
-    # CHANGED: 'regex' -> 'pattern' for Pydantic V2 compatibility
     inspection_contact_number: Optional[str] = Field(None, pattern=r'^\+?[0-9]{10,15}$')
     
     terms_and_conditions: Optional[str] = None
     auction_doc_url: Optional[str] = Field(None, max_length=500)
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "auction_title": "Updated Auction Title",
                 "emd_amount": 75000.00
             }
         }
+    )
 
 
 class AuctionApprovalRequest(BaseModel):
@@ -146,13 +150,14 @@ class AuctionApprovalRequest(BaseModel):
     approve: bool = Field(..., description="True to approve, False to reject")
     remarks: Optional[str] = Field(None, max_length=500, description="Approval/Rejection remarks")
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "approve": True,
                 "remarks": "All documents verified. Approved for publishing."
             }
         }
+    )
 
 
 class AuctionFilterParams(BaseModel):
@@ -176,7 +181,7 @@ class AuctionFilterParams(BaseModel):
     # Featured
     is_featured: Optional[bool] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "status": "LIVE",
@@ -184,6 +189,7 @@ class AuctionFilterParams(BaseModel):
                 "region": "Maharashtra"
             }
         }
+    )
 
 
 # ============================================================================
@@ -214,8 +220,7 @@ class AuctionBasicResponse(BaseModel):
     
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuctionDetailResponse(BaseModel):
@@ -293,8 +298,7 @@ class AuctionDetailResponse(BaseModel):
     # Return created items in response
     items: Optional[List[LotDetailResponse]] = []
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuctionListResponse(BaseModel):
@@ -304,6 +308,7 @@ class AuctionListResponse(BaseModel):
     page_size: int
     total_pages: int
     auctions: List[AuctionBasicResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuctionStatsResponse(BaseModel):
@@ -319,6 +324,7 @@ class AuctionStatsResponse(BaseModel):
     total_lots: int = 0
     total_participants: int = 0
     total_bids: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AuctionActionResponse(BaseModel):
@@ -329,7 +335,7 @@ class AuctionActionResponse(BaseModel):
     new_status: Optional[str] = None
     new_approval_status: Optional[str] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -338,6 +344,7 @@ class AuctionActionResponse(BaseModel):
                 "new_approval_status": "L1_APPROVED"
             }
         }
+    )
 
 
 # ============================================================================
@@ -354,9 +361,10 @@ class CancelAuctionRequest(BaseModel):
     """Request to cancel auction"""
     cancellation_reason: str = Field(..., min_length=10, max_length=500)
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "cancellation_reason": "Unable to proceed due to seller request"
             }
         }
+    )
