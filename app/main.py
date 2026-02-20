@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -39,7 +40,6 @@ from app.routes import market_prices as market_price_routes
 from app.routes import requirements as requirement_routes
 
 # ✨ E-AUCTION ROUTERS (Fixed Imports)
-# Note: We alias them to match your variable names if the filenames are 'auctions.py' and 'admin.py'
 from app.e_auction.routes import auctions as auction_routes
 from app.e_auction.routes import admin_routes as admin_routes
 from app.e_auction.routes import lots
@@ -51,12 +51,31 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ============================================================================
+# ✨ LIFESPAN MANAGEMENT (Modern V2 Standard)
+# ============================================================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handles startup and shutdown events"""
+    try:
+        logger.info("Connecting to Database...")
+        # Creates all tables from imported models
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database connected and tables checked.")
+    except Exception as e:
+        logger.error(f"Database connection error during startup: {e}")
+    
+    yield
+    
+    logger.info("Shutting down Scrapcy API...")
+
+# ============================================================================
 # INITIALIZE APP
 # ============================================================================
 app = FastAPI(
     title="Scrapcy Backend",
     description="Scrap Management & E-Auction Platform",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # ============================================================================
@@ -79,18 +98,7 @@ app.add_middleware(
 )
 
 # ============================================================================
-# CREATE DATABASE TABLES
-# ============================================================================
-try:
-    logger.info("Connecting to Database...")
-    # Creates all tables from imported models
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database connected and tables checked.")
-except Exception as e:
-    logger.error(f"Database connection warning: {e}")
-
-# ============================================================================
-# INCLUDE ROUTERS - EXISTING
+# INCLUDE ROUTERS
 # ============================================================================
 app.include_router(user_routes.router)
 app.include_router(scrap_routes.router)
@@ -125,8 +133,9 @@ app.include_router(
 # ============================================================================
 # ROOT ENDPOINT
 # ============================================================================
-@app.get("/")
+@app.get("/", methods=["GET", "HEAD"])
 def read_root():
+    """Root endpoint supporting GET and HEAD for health checks"""
     return {
         "message": "Scrapcy API is running & modularized!",
         "version": "2.0.0",
