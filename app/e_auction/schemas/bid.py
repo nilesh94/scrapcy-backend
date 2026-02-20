@@ -2,7 +2,7 @@
 Bid Pydantic Schemas
 Request and Response models for Bidding endpoints
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -25,13 +25,13 @@ class PlaceBidRequest(BaseModel):
         # Additional validation (increment, minimum) done in service layer
         return v
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "bid_amount": 26000.00
             }
         }
-    }
+    )
 
 
 class AutoBidCreateRequest(BaseModel):
@@ -45,26 +45,26 @@ class AutoBidCreateRequest(BaseModel):
             raise ValueError('Maximum bid amount must be greater than zero')
         return v
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "max_bid_amount": 50000.00
             }
         }
-    }
+    )
 
 
 class AutoBidUpdateRequest(BaseModel):
     """Request to update auto-bid"""
     max_bid_amount: Decimal = Field(..., gt=0, description="New maximum bid amount")
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "max_bid_amount": 75000.00
             }
         }
-    }
+    )
 
 
 class BidFilterParams(BaseModel):
@@ -107,9 +107,7 @@ class BidResponse(BaseModel):
     ip_address: Optional[str] = None
     device_info: Optional[str] = None
     
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BidDetailResponse(BaseModel):
@@ -135,9 +133,7 @@ class BidDetailResponse(BaseModel):
     is_active: bool = False
     is_outbid: bool = False
     
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BidHistoryResponse(BaseModel):
@@ -148,6 +144,7 @@ class BidHistoryResponse(BaseModel):
     unique_bidders: int
     highest_bid: Optional[Decimal] = None
     bids: List[BidResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BidListResponse(BaseModel):
@@ -157,6 +154,7 @@ class BidListResponse(BaseModel):
     page_size: int
     total_pages: int
     bids: List[BidDetailResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MyBidsResponse(BaseModel):
@@ -167,6 +165,7 @@ class MyBidsResponse(BaseModel):
     lost_bids: int = 0
     total_amount_bid: Decimal = Decimal('0.00')
     bids: List[BidDetailResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BidSuccessResponse(BaseModel):
@@ -181,8 +180,8 @@ class BidSuccessResponse(BaseModel):
     # Next bid info
     min_next_bid: Decimal
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "message": "Bid placed successfully",
@@ -193,7 +192,7 @@ class BidSuccessResponse(BaseModel):
                 "min_next_bid": 27000.00
             }
         }
-    }
+    )
 
 
 class BidRejectedResponse(BaseModel):
@@ -204,8 +203,8 @@ class BidRejectedResponse(BaseModel):
     current_highest_bid: Optional[Decimal] = None
     min_required_bid: Optional[Decimal] = None
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "success": False,
                 "error": "Bid amount too low",
@@ -214,7 +213,7 @@ class BidRejectedResponse(BaseModel):
                 "min_required_bid": 26500.00
             }
         }
-    }
+    )
 
 
 # ============================================================================
@@ -240,9 +239,7 @@ class AutoBidResponse(BaseModel):
     has_budget_remaining: bool = False
     budget_remaining: Optional[Decimal] = None
     
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AutoBidListResponse(BaseModel):
@@ -250,6 +247,7 @@ class AutoBidListResponse(BaseModel):
     total: int
     active_count: int
     auto_bids: List[AutoBidResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AutoBidSuccessResponse(BaseModel):
@@ -260,8 +258,8 @@ class AutoBidSuccessResponse(BaseModel):
     max_bid_amount: Decimal
     current_highest_bid: Optional[Decimal] = None
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "success": True,
                 "message": "Auto-bid activated successfully",
@@ -270,7 +268,7 @@ class AutoBidSuccessResponse(BaseModel):
                 "current_highest_bid": 26000.00
             }
         }
-    }
+    )
 
 
 class CancelAutoBidRequest(BaseModel):
@@ -296,6 +294,7 @@ class BidStatsResponse(BaseModel):
     
     # Success rate
     win_rate: float = 0.0  # Percentage
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LotBidSummary(BaseModel):
@@ -318,9 +317,7 @@ class LotBidSummary(BaseModel):
     user_is_winning: bool = False
     user_has_auto_bid: bool = False
     
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -351,8 +348,8 @@ class BidUpdateMessage(BaseModel):
     winning_user_id: Optional[int] = None  # Only sent to the winner
     is_current_user_winning: bool = False
     
-    model_config = {
-        "json_schema_extra": {
+    model_config = ConfigDict(
+        json_schema_extra = {
             "example": {
                 "event_type": "BID_PLACED",
                 "auction_item_id": 456,
@@ -364,4 +361,4 @@ class BidUpdateMessage(BaseModel):
                 "is_current_user_winning": False
             }
         }
-    }
+    )
