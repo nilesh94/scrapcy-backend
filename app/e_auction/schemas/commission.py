@@ -1,7 +1,7 @@
 """
 Commission Pydantic Schemas
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -36,21 +36,23 @@ class CommissionRuleCreateRequest(BaseModel):
     effective_from: Optional[datetime] = None
     effective_until: Optional[datetime] = None
     
-    @validator('max_transaction_amount')
-    def max_greater_than_min(cls, v, values):
-        if v and 'min_transaction_amount' in values and values['min_transaction_amount']:
-            if v <= values['min_transaction_amount']:
+    @field_validator('max_transaction_amount')
+    @classmethod
+    def max_greater_than_min(cls, v: Optional[Decimal], info) -> Optional[Decimal]:
+        if v and 'min_transaction_amount' in info.data and info.data['min_transaction_amount']:
+            if v <= info.data['min_transaction_amount']:
                 raise ValueError('max_transaction_amount must be greater than min_transaction_amount')
         return v
     
-    @validator('effective_until')
-    def until_after_from(cls, v, values):
-        if v and 'effective_from' in values and values['effective_from']:
-            if v <= values['effective_from']:
+    @field_validator('effective_until')
+    @classmethod
+    def until_after_from(cls, v: Optional[datetime], info) -> Optional[datetime]:
+        if v and 'effective_from' in info.data and info.data['effective_from']:
+            if v <= info.data['effective_from']:
                 raise ValueError('effective_until must be after effective_from')
         return v
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "rule_name": "Standard Commission",
@@ -61,6 +63,7 @@ class CommissionRuleCreateRequest(BaseModel):
                 "priority": 0
             }
         }
+    )
 
 
 class CommissionRuleUpdateRequest(BaseModel):
@@ -111,8 +114,7 @@ class CommissionRuleResponse(BaseModel):
     # Computed
     is_currently_effective: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CommissionRuleListResponse(BaseModel):
@@ -121,6 +123,7 @@ class CommissionRuleListResponse(BaseModel):
     active_rules: int
     default_rule_id: Optional[int] = None
     rules: List[CommissionRuleResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -164,8 +167,7 @@ class CommissionResponse(BaseModel):
     is_collected: bool = False
     is_pending: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CommissionListResponse(BaseModel):
@@ -175,6 +177,7 @@ class CommissionListResponse(BaseModel):
     page_size: int
     total_pages: int
     commissions: List[CommissionResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CommissionCalculationResponse(BaseModel):
@@ -205,7 +208,7 @@ class CommissionCalculationResponse(BaseModel):
     # Rule applied
     rule_applied: Optional[CommissionRuleResponse] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "base_amount": 100000.00,
@@ -222,6 +225,7 @@ class CommissionCalculationResponse(BaseModel):
                 "buyer_pays": 101180.00
             }
         }
+    )
 
 
 # ============================================================================
@@ -247,6 +251,7 @@ class CommissionStatsResponse(BaseModel):
     total_transactions: int = 0
     pending_count: int = 0
     collected_count: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CommissionByCategory(BaseModel):
@@ -255,6 +260,7 @@ class CommissionByCategory(BaseModel):
     total_transactions: int
     total_commission: Decimal
     avg_commission_rate: Decimal
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CommissionAnalyticsResponse(BaseModel):
@@ -271,6 +277,7 @@ class CommissionAnalyticsResponse(BaseModel):
     
     # Top performers
     top_auctions_by_commission: List[dict]
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
@@ -282,13 +289,14 @@ class WaiveCommissionRequest(BaseModel):
     commission_id: int
     reason: str = Field(..., min_length=10, max_length=500)
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "commission_id": 123,
                 "reason": "First-time seller promotion - waiving commission"
             }
         }
+    )
 
 
 class CommissionActionResponse(BaseModel):
@@ -298,7 +306,7 @@ class CommissionActionResponse(BaseModel):
     commission_id: int
     new_status: str
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -307,3 +315,4 @@ class CommissionActionResponse(BaseModel):
                 "new_status": "WAIVED"
             }
         }
+    )
