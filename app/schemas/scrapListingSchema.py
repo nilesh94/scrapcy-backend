@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
@@ -8,29 +8,25 @@ class CategoryOut(BaseModel):
     material_category: str 
     scrap_type: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MaterialOut(BaseModel):
     id: int
     material_name: str 
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class FormOut(BaseModel):
     id: int
     form_name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class GradeOut(BaseModel):
     id: int
     grade_name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- IMAGE SCHEMAS ---
 class ScrapImageBase(BaseModel):
@@ -42,8 +38,7 @@ class ScrapImageResponse(ScrapImageBase):
     scrap_listing_id: int
     created_at: Optional[datetime] = None 
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- LISTING SCHEMAS ---
 class ScrapListingBase(BaseModel):
@@ -87,8 +82,7 @@ class ScrapListingResponse(ScrapListingBase):
 
     images: List[ScrapImageResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # =======================================================
 # NEW: HIERARCHY SCHEMAS (For Dropdown Menus)
@@ -98,24 +92,24 @@ class GradeHierarchyResponse(BaseModel):
     id: int
     grade_name: str
     is_active: bool = True
-    class Config:
-        from_attributes = True
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class FormHierarchyResponse(BaseModel):
     id: int
     form_name: str
     is_active: bool = True
     grades: List[GradeHierarchyResponse] = []
-    class Config:
-        from_attributes = True
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class MaterialHierarchyResponse(BaseModel):
     id: int
     material_name: str
     is_active: bool = True
     forms: List[FormHierarchyResponse] = []
-    class Config:
-        from_attributes = True
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class CategoryHierarchyResponse(BaseModel):
     id: int
@@ -123,5 +117,5 @@ class CategoryHierarchyResponse(BaseModel):
     material_category: str
     is_active: bool = True
     materials: List[MaterialHierarchyResponse] = []
-    class Config:
-        from_attributes = True
+    
+    model_config = ConfigDict(from_attributes=True)
