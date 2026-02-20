@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -25,5 +25,5 @@ class LocationResponse(LocationBase):
     is_active: int
     created_at: Optional[datetime]
     
-    class Config:
-        from_attributes = True
+    # UPDATED: Using Pydantic V2 model_config
+    model_config = ConfigDict(from_attributes=True)
