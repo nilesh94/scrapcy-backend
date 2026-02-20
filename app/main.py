@@ -133,7 +133,7 @@ app.include_router(
 # ============================================================================
 # ROOT ENDPOINT
 # ============================================================================
-@app.get("/", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"])
 def read_root():
     """Root endpoint supporting GET and HEAD for health checks"""
     return {
