@@ -2,7 +2,7 @@
 Auction Item (Lot) Pydantic Schemas
 Request and Response models for Lot endpoints
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -58,30 +58,37 @@ class LotCreateRequest(BaseModel):
     # Auction Type Specific
     decrement_amount: Optional[Decimal] = Field(None, gt=0, description="For Dutch auction")
     
-    _validate_starting_bid = validator('starting_bid_amount', allow_reuse=True)(validate_positive_amount)
+    # UPDATED: V2 syntax for field validation
+    @field_validator('starting_bid_amount')
+    @classmethod
+    def validate_bid_positive(cls, v: Decimal) -> Decimal:
+        return validate_positive_amount(v)
     
-    @validator('reserve_price')
-    def reserve_price_validation(cls, v, values):
-        if v and 'starting_bid_amount' in values:
-            if v < values['starting_bid_amount']:
+    @field_validator('reserve_price')
+    @classmethod
+    def reserve_price_validation(cls, v: Optional[Decimal], info) -> Optional[Decimal]:
+        if v and 'starting_bid_amount' in info.data:
+            if v < info.data['starting_bid_amount']:
                 raise ValueError('reserve_price cannot be less than starting_bid_amount')
         return v
     
-    @validator('buy_now_price')
-    def buy_now_price_validation(cls, v, values):
-        if v and 'starting_bid_amount' in values:
-            if v <= values['starting_bid_amount']:
+    @field_validator('buy_now_price')
+    @classmethod
+    def buy_now_price_validation(cls, v: Optional[Decimal], info) -> Optional[Decimal]:
+        if v and 'starting_bid_amount' in info.data:
+            if v <= info.data['starting_bid_amount']:
                 raise ValueError('buy_now_price must be greater than starting_bid_amount')
         return v
     
-    @validator('lot_end_time')
-    def lot_end_after_start(cls, v, values):
-        if v and 'lot_start_time' in values and values['lot_start_time']:
-            if v <= values['lot_start_time']:
+    @field_validator('lot_end_time')
+    @classmethod
+    def lot_end_after_start(cls, v: Optional[datetime], info) -> Optional[datetime]:
+        if v and 'lot_start_time' in info.data and info.data['lot_start_time']:
+            if v <= info.data['lot_start_time']:
                 raise ValueError('lot_end_time must be after lot_start_time')
         return v
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "item_name": "MS Scrap - Turning Boring 500 MT",
@@ -100,6 +107,7 @@ class LotCreateRequest(BaseModel):
                 "condition_rating": 4
             }
         }
+    )
 
 
 class LotUpdateRequest(BaseModel):
@@ -136,13 +144,14 @@ class LotApprovalRequest(BaseModel):
     approve: bool = Field(..., description="True to approve, False to reject")
     remarks: Optional[str] = Field(None, max_length=500)
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "approve": True,
                 "remarks": "Quality verified. Approved for auction."
             }
         }
+    )
 
 
 class LotImageUploadRequest(BaseModel):
@@ -180,7 +189,7 @@ class LotFilterParams(BaseModel):
     # Has bids
     has_bids: Optional[bool] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "lot_status": "LIVE",
@@ -189,6 +198,7 @@ class LotFilterParams(BaseModel):
                 "max_price": 50000
             }
         }
+    )
 
 
 # ============================================================================
@@ -203,8 +213,7 @@ class LotImageResponse(BaseModel):
     is_primary: int
     display_order: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LotBasicResponse(BaseModel):
@@ -252,8 +261,7 @@ class LotBasicResponse(BaseModel):
     current_price: Decimal
     is_live: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LotDetailResponse(BaseModel):
@@ -354,8 +362,7 @@ class LotDetailResponse(BaseModel):
     reserve_met: bool = False
     can_accept_bids: bool = False
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LotListResponse(BaseModel):
@@ -365,6 +372,7 @@ class LotListResponse(BaseModel):
     page_size: int
     total_pages: int
     lots: List[LotBasicResponse]
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LotStatsResponse(BaseModel):
@@ -381,6 +389,7 @@ class LotStatsResponse(BaseModel):
     
     total_bids: int = 0
     unique_bidders: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LotActionResponse(BaseModel):
@@ -390,7 +399,7 @@ class LotActionResponse(BaseModel):
     lot_id: int
     new_status: Optional[str] = None
     
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -399,3 +408,4 @@ class LotActionResponse(BaseModel):
                 "new_status": "APPROVED"
             }
         }
+    )
