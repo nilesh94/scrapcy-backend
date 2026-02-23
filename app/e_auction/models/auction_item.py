@@ -139,9 +139,10 @@ class AuctionItem(Base):
     
     @property
     def min_next_bid(self) -> float:
-        """Calculate minimum next bid amount"""
-        current = self.current_price
-        increment = self.min_increment_amount or (current * 0.01)  # 1% default
+        """Calculate minimum next bid amount based on current highest bid"""
+        current = self.highest_bid_amount or self.starting_bid_amount
+        # Use DB increment; if null, fallback to 0 to allow any bid above current
+        increment = self.min_increment_amount or 0
         return current + increment
     
     @property
