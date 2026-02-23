@@ -23,12 +23,12 @@ from app.e_auction.models import (
     auction_item as auction_item_models,
     # Added Approval System Models
     approval as approval_models,
-    # Enabled remaining e-auction models for full schema registration
-    bid as bid_models,
-    participant as participant_models,
-    payment as payment_models,
-    settlement as settlement_models,
-    audit_log as audit_log_models,
+    # Commenting out missing models to fix ImportError
+    # bid as bid_models,
+    # participant as participant_models,
+    # payment as payment_models,
+    # settlement as settlement_models,
+    # audit_log as audit_log_models,
 )
 
 # ============================================================================
