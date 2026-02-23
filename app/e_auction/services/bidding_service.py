@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from datetime import datetime
 from decimal import Decimal
+from fastapi import HTTPException
 
 from app.e_auction.models import Bid, AuctionItem, Auction, AuctionParticipant, AutoBid
 from app.e_auction.schemas.bid import *
 from app.e_auction.utils.exceptions import *
-from app.e_auction.utils.enums import BidStatus, BidType, LotStatus, AutoBidStatus
+from app.e_auction.utils.enums import BidStatus, BidType, LotStatus, AutoBidStatus, AuctionType
 from app.e_auction.config import settings
 
 
@@ -34,7 +35,7 @@ class BiddingService:
         Validates:
         - User is registered for auction
         - Lot is live
-        - Bid amount is valid
+        - Bid amount is valid (based on engine type)
         - User is not the seller
         """
         # Get lot with PESSIMISTIC LOCK to handle simultaneous last-minute bids
@@ -63,22 +64,49 @@ class BiddingService:
         
         if not participant:
             raise UserNotRegisteredForAuctionException()
+
+        # DISPATCHER: Route to specific engine logic based on Auction Type
+        if lot.auction_type == AuctionType.FORWARD:
+            return BiddingService._execute_forward_bid(db, lot, auction, user_id, bid_amount, ip_address, device_info)
         
-        # Validate bid amount against freshest data inside the lock
+        elif lot.auction_type == AuctionType.REVERSE:
+            return BiddingService._execute_reverse_bid(db, lot, auction, user_id, bid_amount, ip_address, device_info)
+            
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported auction type engine: {lot.auction_type}")
+
+    @staticmethod
+    def _execute_forward_bid(db: Session, lot: AuctionItem, auction: Auction, user_id: int, bid_amount: Decimal, ip: str, device: Optional[str]) -> Bid:
+        # Validation for Forward Auction: Price must go UP
         min_bid = (lot.highest_bid_amount or lot.starting_bid_amount) + (lot.min_increment_amount or 0)
         if bid_amount < min_bid:
             raise BidAmountTooLowException(min_bid, auction.currency)
         
+        return BiddingService._commit_bid_and_update_lot(db, lot, user_id, bid_amount, ip, device)
+
+    @staticmethod
+    def _execute_reverse_bid(db: Session, lot: AuctionItem, auction: Auction, user_id: int, bid_amount: Decimal, ip: str, device: Optional[str]) -> Bid:
+        # Validation for Reverse Auction: Price must go DOWN
+        current_lowest = lot.highest_bid_amount or lot.starting_bid_amount
+        max_allowed = current_lowest - (lot.min_increment_amount or 0)
+        
+        if bid_amount > max_allowed:
+            raise HTTPException(status_code=400, detail=f"Bid too high for reverse auction. Max allowed: {max_allowed}")
+        
+        return BiddingService._commit_bid_and_update_lot(db, lot, user_id, bid_amount, ip, device)
+
+    @staticmethod
+    def _commit_bid_and_update_lot(db: Session, lot: AuctionItem, user_id: int, bid_amount: Decimal, ip: str, device: Optional[str]) -> Bid:
         # Create bid
         bid = Bid(
             auction_id=lot.auction_id,
-            auction_item_id=auction_item_id,
+            auction_item_id=lot.id,
             user_id=user_id,
             bid_amount=bid_amount,
             bid_type=BidType.MANUAL,
             bid_status=BidStatus.ACTIVE,
-            ip_address=ip_address,
-            device_info=device_info
+            ip_address=ip,
+            device_info=device
         )
         
         db.add(bid)
@@ -87,7 +115,7 @@ class BiddingService:
         if lot.highest_bid_amount:
             previous_bid = db.query(Bid).filter(
                 and_(
-                    Bid.auction_item_id == auction_item_id,
+                    Bid.auction_item_id == lot.id,
                     Bid.is_winning_bid == 1
                 )
             ).first()
@@ -106,10 +134,7 @@ class BiddingService:
         db.commit()
         db.refresh(bid)
         
-        # TODO: Trigger auto-bid for other users
-        # TODO: Send notifications to outbid users
-        # TODO: Check if extension needed
-        
+        # NOTE: Real-time broadcast should be triggered from the caller/route
         return bid
     
     @staticmethod
