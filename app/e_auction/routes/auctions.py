@@ -692,3 +692,24 @@ async def get_all_auction_statistics(
     RBAC: Requires ADMIN role
     """
     return AuctionService.get_auction_stats(db=db)
+
+@router.get("/{auction_id}/participation-summary")
+async def get_participation_summary(
+    auction_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    # 1. Get Auction Details
+    auction = db.query(Auction).filter(Auction.id == auction_id).first()
+    
+    # 2. Check User Participation Status
+    participation = db.query(AuctionParticipant).filter(
+        AuctionParticipant.auction_id == auction_id,
+        AuctionParticipant.user_id == current_user.id
+    ).first()
+
+    return {
+        "auction": auction,
+        "participation": participation,
+        "server_time": datetime.utcnow()
+    }
