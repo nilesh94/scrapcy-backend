@@ -10,6 +10,7 @@ from app.e_auction.websockets.connection_manager import connection_manager
 from app.e_auction.schemas.bid import BidUpdateMessage
 from app.e_auction.models import AuctionItem, Bid
 from app.database.connection import SessionLocal
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -315,3 +316,16 @@ async def disconnect_all_from_lot(lot_id: int):
     
     except Exception as e:
         logger.error(f"❌ Error disconnecting users: {str(e)}")
+
+async def broadcast_auction_started(auction_id: int):
+    """
+    Notifies all connected bidders that the auction is now active.
+    """
+    message = {
+        "event_type": "AUCTION_LIVE",
+        "auction_id": auction_id,
+        "server_time": datetime.utcnow().isoformat(),
+        "message": "Bidding is now open! Good luck."
+    }
+    # connection_manager will iterate through all lots belonging to this auction
+    await connection_manager.broadcast_to_auction(auction_id, message)
