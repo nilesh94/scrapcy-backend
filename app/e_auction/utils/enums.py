@@ -9,6 +9,7 @@ class AuctionStatus(str, Enum):
     """Auction lifecycle statuses"""
     DRAFT = "DRAFT"
     PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
     SCHEDULED = "SCHEDULED"
     LIVE = "LIVE"
     CLOSED = "CLOSED"
