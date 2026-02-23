@@ -25,7 +25,7 @@ from app.e_auction.models import (
     approval as approval_models,
     participant_watchlist_autobid_payment as participant_models,
     # Commenting out missing models to fix ImportError
-    # bid as bid_models,
+    bid as bid_models,
     # payment as payment_models,
     # settlement as settlement_models,
     # audit_log as audit_log_models,
