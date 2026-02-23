@@ -241,21 +241,20 @@ async def broadcast_auction_ended(lot_id: int, winner_user_id: Optional[int] = N
             return
         
         # Create ended message
-        ended_message = BidUpdateMessage(
-            event_type="AUCTION_ENDED",
-            auction_item_id=lot_id,
-            current_highest_bid=lot.final_sold_price or lot.highest_bid_amount,
-            total_bids=lot.total_bids_count or 0,
-            unique_bidders=lot.unique_bidders_count or 0,
-            time_remaining_seconds=0,
-            winning_user_id=winner_user_id  # Can reveal winner now
-        )
+        ended_message = {
+            "event_type": "AUCTION_CLOSED",
+            "auction_id": lot.auction_id,
+            "lot_id": lot_id,
+            "current_highest_bid": float(lot.final_sold_price or lot.highest_bid_amount or 0),
+            "total_bids": lot.total_bids_count or 0,
+            "unique_bidders": lot.unique_bidders_count or 0,
+            "time_remaining_seconds": 0,
+            "winning_user_id": winner_user_id,  # Can reveal winner now
+            "server_time": datetime.utcnow().isoformat()
+        }
         
-        # Broadcast to all watchers
-        await connection_manager.broadcast_to_lot(
-            lot_id=lot_id,
-            message=ended_message
-        )
+        # Broadcast to all watchers of this auction
+        await connection_manager.broadcast_to_auction(lot.auction_id, ended_message)
         
         logger.info(f"🏁 Broadcasted auction end for lot {lot_id}")
     
