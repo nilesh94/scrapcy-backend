@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 class PermissionBase(BaseModel):
-    perm_key: str [cite: 90]
+    perm_key: str
     category: Optional[str] = None [cite: 91]
     description: Optional[str] = None [cite: 92]
     model_config = ConfigDict(from_attributes=True)
