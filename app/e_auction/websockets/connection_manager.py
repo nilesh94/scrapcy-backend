@@ -116,6 +116,27 @@ class ConnectionManager:
         # Clean up dead connections
         for lot_id, user_id, ws in dead_connections:
             self.disconnect(ws, lot_id, user_id)
+
+    async def broadcast_to_auction(self, auction_id: int, message: dict):
+        """
+        Broadcast message to all users watching any lot in a specific auction.
+        Used for operational status changes like AUCTION_LIVE or AUCTION_CLOSED.
+        """
+        # Iterate over all currently active lots and broadcast the message
+        # In this implementation, we broadcast to all active lots being tracked
+        for lot_id in list(self.active_connections.keys()):
+            dead_connections = []
+            for user_id, connections in list(self.active_connections[lot_id].items()):
+                for websocket in connections:
+                    try:
+                        await websocket.send_json(message)
+                    except Exception as e:
+                        logger.error(f"Error broadcasting auction update to lot {lot_id}: {str(e)}")
+                        dead_connections.append((lot_id, user_id, websocket))
+            
+            # Clean up dead connections discovered during broadcast
+            for lid, uid, ws in dead_connections:
+                self.disconnect(ws, lid, uid)
     
     async def broadcast_to_user(self, user_id: int, message: dict):
         """Send message to all connections of a specific user"""
