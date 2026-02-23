@@ -6,7 +6,7 @@ Optimized for performance - handles high-volume bidding
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from fastapi import HTTPException
 
@@ -130,12 +130,43 @@ class BiddingService:
         lot.highest_bid_amount = bid_amount
         lot.winner_user_id = user_id
         lot.total_bids_count = (lot.total_bids_count or 0) + 1
+
+        # Check for Auto-Extension (Anti-Sniping)
+        BiddingService._handle_auto_extension(lot)
         
         db.commit()
         db.refresh(bid)
         
         # NOTE: Real-time broadcast should be triggered from the caller/route
         return bid
+
+    @staticmethod
+    def _handle_auto_extension(lot: AuctionItem):
+        """
+        Industrial Precision Anti-Sniping Logic.
+        If bid is within trigger window, extend the end time.
+        """
+        # Inherit settings from parent auction if not set on lot
+        from app.e_auction.models import Auction
+        auction = lot.auction # Relationship access
+        
+        enable_ext = lot.enable_extension if lot.enable_extension is not None else auction.enable_extension
+        if not enable_ext:
+            return
+
+        window_mins = lot.extension_trigger_window_minutes or auction.extension_trigger_window_minutes or 2
+        ext_mins = lot.extension_duration_minutes or auction.extension_duration_minutes or 5
+        min_bids = lot.extension_min_total_bids or auction.extension_min_total_bids or 1
+
+        if lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
+            now = datetime.utcnow()
+            time_left = lot.lot_end_time - now
+            
+            # If bid is within the 'sniping window'
+            if time_left <= timedelta(minutes=window_mins) and time_left > timedelta(0):
+                lot.lot_end_time = lot.lot_end_time + timedelta(minutes=ext_mins)
+                lot.extension_count = (lot.extension_count or 0) + 1
+                # Log extension via WebSocket later
     
     @staticmethod
     def create_auto_bid(
