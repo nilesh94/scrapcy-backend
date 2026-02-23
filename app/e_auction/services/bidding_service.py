@@ -37,8 +37,8 @@ class BiddingService:
         - Bid amount is valid
         - User is not the seller
         """
-        # Get lot
-        lot = db.query(AuctionItem).filter(AuctionItem.id == auction_item_id).first()
+        # Get lot with PESSIMISTIC LOCK to handle simultaneous last-minute bids
+        lot = db.query(AuctionItem).with_for_update().filter(AuctionItem.id == auction_item_id).first()
         if not lot:
             raise LotNotFoundException(auction_item_id)
         
@@ -64,8 +64,8 @@ class BiddingService:
         if not participant:
             raise UserNotRegisteredForAuctionException()
         
-        # Validate bid amount
-        min_bid = lot.min_next_bid
+        # Validate bid amount against freshest data inside the lock
+        min_bid = (lot.highest_bid_amount or lot.starting_bid_amount) + (lot.min_increment_amount or 0)
         if bid_amount < min_bid:
             raise BidAmountTooLowException(min_bid, auction.currency)
         
@@ -98,9 +98,10 @@ class BiddingService:
         # Mark this as winning
         bid.is_winning_bid = 1
         
-        # Update lot (trigger will handle counters)
+        # Update lot metadata inside the transaction
         lot.highest_bid_amount = bid_amount
         lot.winner_user_id = user_id
+        lot.total_bids_count = (lot.total_bids_count or 0) + 1
         
         db.commit()
         db.refresh(bid)
