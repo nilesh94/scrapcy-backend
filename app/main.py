@@ -23,12 +23,12 @@ from app.e_auction.models import (
     auction_item as auction_item_models,
     # Added Approval System Models
     approval as approval_models,
-    # Uncomment these as you add the files:
-    # bid as bid_models,
-    # participant as participant_models,
-    # payment as payment_models,
-    # settlement as settlement_models,
-    # audit_log as audit_log_models,
+    # Enabled remaining e-auction models for full schema registration
+    bid as bid_models,
+    participant as participant_models,
+    payment as payment_models,
+    settlement as settlement_models,
+    audit_log as audit_log_models,
 )
 
 # ============================================================================
@@ -47,6 +47,8 @@ from app.e_auction.routes import admin_routes as admin_routes
 from app.e_auction.routes import lots
 # Added Approval Workflow Router
 from app.e_auction.routes import approval as approval_routes
+# Added bidding router for the live engine
+from app.e_auction.routes import bidding as bidding_routes
 
 # ============================================================================
 # SETUP LOGGING
@@ -138,6 +140,12 @@ app.include_router(
 # Handles multi-level approvals: L1 -> L2 -> Admin sign-off 
 app.include_router(
     approval_routes.router
+)
+
+# 4. Bidding Engine Routes
+# Added bidding router to process real-time bids
+app.include_router(
+    bidding_routes.router
 )
 
 # ============================================================================
