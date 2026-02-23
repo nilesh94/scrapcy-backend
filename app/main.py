@@ -23,8 +23,7 @@ from app.e_auction.models import (
     auction_item as auction_item_models,
     # Added Approval System Models
     approval as approval_models,
-    # Re-enabling participant model now that file is created
-    participant as participant_models,
+    participant_watchlist_autobid_payment as participant_models,
     # Commenting out missing models to fix ImportError
     # bid as bid_models,
     # payment as payment_models,
