@@ -21,6 +21,10 @@ class Auction(Base):
     
     # Creator
     created_by = Column("CREATED_BY", Integer, nullable=False)
+    # Admin approval level (mirrors existing L1/L2 pattern)
+    created_by_role = Column("CREATED_BY_ROLE", String(30))
+    # Creator role snapshot and submission timestamp
+    submitted_at = Column("SUBMITTED_AT", TIMESTAMP(6))
     
     # Auction Details
     auction_title = Column("AUCTION_TITLE", String(255), nullable=False)
@@ -41,6 +45,11 @@ class Auction(Base):
     publish_l2_approved_by = Column("PUBLISH_L2_APPROVED_BY", Integer)
     publish_l2_approved_at = Column("PUBLISH_L2_APPROVED_AT", TIMESTAMP(6))
     publish_l2_remarks = Column("PUBLISH_L2_REMARKS", String(500))
+    
+    # Admin approval level (mirrors existing L1/L2 pattern)
+    publish_admin_approved_by = Column("PUBLISH_ADMIN_APPROVED_BY", Integer)
+    publish_admin_approved_at = Column("PUBLISH_ADMIN_APPROVED_AT", TIMESTAMP(6))
+    publish_admin_remarks = Column("PUBLISH_ADMIN_REMARKS", String(500))
     
     # Scheduling
     scheduled_start_time = Column("SCHEDULED_START_TIME", TIMESTAMP(6))
