@@ -12,7 +12,7 @@ class AuctionApprovalService:
     async def check_permission(db: Session, user_id: int, perm_key: str) -> bool:
         """
         Executes the Backend Permission Check Query[cite: 158].
-        Verifies active user roles and permissions in scrapcy_app[cite: 161, 169].
+        Verifies active user roles and permissions in scrapcy_app [cite: 161-169].
         """
         query = text("""
             SELECT 1
@@ -38,31 +38,52 @@ class AuctionApprovalService:
     ):
         """
         Main State Machine implementing the v3.0 logic[cite: 201, 447].
-        Enforces Dual-Write Rule for transactional integrity[cite: 153].
+        Enforces Dual-Write Rule for transactional integrity [cite: 152-155].
         """
+        
+        # 1. Map actions to required permissions as defined in the Final Matrix [cite: 407]
+        permission_map = {
+            ApprovalAction.SUBMIT: "auction:submit",
+            ApprovalAction.RESUBMIT: "auction:submit",
+            ApprovalAction.APPROVE_L1: "auction:approve_l1",
+            ApprovalAction.APPROVE_L2: "auction:approve_l2",
+            ApprovalAction.APPROVE_ADMIN: "auction:approve_admin",
+            ApprovalAction.PUBLISH: "auction:publish_any",
+            ApprovalAction.REJECT: "auction:reject",
+            ApprovalAction.CANCEL: "auction:cancel"
+        }
+
+        perm_key = permission_map.get(request.action)
+        if not perm_key:
+            raise HTTPException(status_code=400, detail="Invalid approval action requested")
+
+        # 2. Verify Permission [cite: 160]
+        if not await AuctionApprovalService.check_permission(db, user_id, perm_key):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail=f"Forbidden: Insufficient permissions. Required: {perm_key}"
+            )
+
         auction = db.query(Auction).filter(Auction.id == auction_id).first()
         if not auction:
             raise HTTPException(status_code=404, detail="Auction not found")
 
-        # Capture initial states for logging [cite: 61, 62]
+        # Capture initial states for immutable logging [cite: 61, 62]
         from_app_status = auction.approval_status
         from_auc_status = auction.status
         to_app_status = from_app_status
         to_auc_status = from_auc_status
-        perm_key = ""
 
         # --- SUBMIT / RESUBMIT Logic [cite: 205, 223] ---
         if request.action in [ApprovalAction.SUBMIT, ApprovalAction.RESUBMIT]:
-            perm_key = "auction:submit"
             to_auc_status = AuctionStatus.PENDING_APPROVAL
             to_app_status = ApprovalStatus.PENDING_L1
-            # Set submitted_at timestamp only on first submit 
+            # Set submitted_at timestamp only on first submit [cite: 157, 275]
             if not auction.submitted_at:
                 auction.submitted_at = datetime.utcnow()
 
         # --- L1 APPROVE Logic [cite: 206, 359] ---
         elif request.action == ApprovalAction.APPROVE_L1:
-            perm_key = "auction:approve_l1"
             if from_app_status != ApprovalStatus.PENDING_L1:
                 raise HTTPException(status_code=400, detail="Invalid L1 transition")
             to_app_status = ApprovalStatus.PENDING_L2
@@ -72,7 +93,6 @@ class AuctionApprovalService:
 
         # --- L2 APPROVE Logic [cite: 207, 360] ---
         elif request.action == ApprovalAction.APPROVE_L2:
-            perm_key = "auction:approve_l2"
             if from_app_status != ApprovalStatus.PENDING_L2:
                 raise HTTPException(status_code=400, detail="Invalid L2 transition")
             to_app_status = ApprovalStatus.PENDING_ADMIN
@@ -82,7 +102,6 @@ class AuctionApprovalService:
 
         # --- ADMIN APPROVE Logic (v3.0 Transition) [cite: 185, 208, 361] ---
         elif request.action == ApprovalAction.APPROVE_ADMIN:
-            perm_key = "auction:approve_admin"
             if from_app_status != ApprovalStatus.PENDING_ADMIN:
                 raise HTTPException(status_code=400, detail="Invalid Admin approval transition")
             to_auc_status = AuctionStatus.APPROVED
@@ -93,7 +112,6 @@ class AuctionApprovalService:
 
         # --- ADMIN PUBLISH Logic (OCI Trigger) [cite: 211, 362] ---
         elif request.action == ApprovalAction.PUBLISH:
-            perm_key = "auction:publish_any"
             if from_auc_status != AuctionStatus.APPROVED or from_app_status != ApprovalStatus.READY_TO_PUBLISH:
                 raise HTTPException(status_code=400, detail="Auction must be Admin-approved before publishing")
             to_auc_status = AuctionStatus.SCHEDULED
@@ -102,32 +120,26 @@ class AuctionApprovalService:
 
         # --- REJECT Logic [cite: 222, 363] ---
         elif request.action == ApprovalAction.REJECT:
-            perm_key = "auction:reject"
             to_auc_status = AuctionStatus.DRAFT
             to_app_status = ApprovalStatus.REJECTED
 
         # --- CANCEL Logic [cite: 225, 365] ---
         elif request.action == ApprovalAction.CANCEL:
-            perm_key = "auction:cancel"
             to_auc_status = AuctionStatus.CANCELLED
             to_app_status = ApprovalStatus.CANCELLED
 
-        # 1. Verify Permission [cite: 160]
-        if not await AuctionApprovalService.check_permission(db, user_id, perm_key):
-            raise HTTPException(status_code=403, detail="Forbidden: Insufficient permissions")
-
-        # 2. Update Auction Table (Write 1) [cite: 154]
+        # 3. Update Auction Table (Write 1) [cite: 154]
         auction.status = to_auc_status
         auction.approval_status = to_app_status
         auction.updated_at = datetime.utcnow()
 
-        # 3. Create Approval Log entry (Write 2) [cite: 155]
+        # 4. Create Approval Log entry (Write 2) [cite: 155]
         approval_log = AuctionApprovalLog(
             auction_id=auction_id,
             action_by=user_id,
             action_by_role=user_role,
             action=request.action,
-            from_status=from_app_status, # Captures internal workflow change
+            from_status=from_app_status, 
             to_status=to_app_status,
             comments=request.comments
         )
