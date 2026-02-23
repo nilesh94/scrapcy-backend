@@ -11,15 +11,15 @@ class AuctionApprovalService:
     @staticmethod
     async def check_permission(db: Session, user_id: int, perm_key: str) -> bool:
         """
-        Executes the Backend Permission Check Query[cite: 158].
-        Verifies active user roles and permissions in scrapcy_app [cite: 161-169].
+        Executes the Backend Permission Check Query.
+        Verifies active user roles and permissions in scrapcy_app.
         """
         query = text("""
             SELECT 1
             FROM   scrapcy_app.user_roles    ur
             JOIN   scrapcy_app.role_permissions rp ON rp.role_id = ur.role_id
-            JOIN   scrapcy_app.permissions   p  ON p.perm_id  = rp.perm_id
-            JOIN   scrapcy_app.roles         r  ON r.role_id  = ur.role_id
+            JOIN   scrapcy_app.permissions    p  ON p.perm_id  = rp.perm_id
+            JOIN   scrapcy_app.roles          r  ON r.role_id  = ur.role_id
             WHERE  ur.user_id   = :user_id
             AND    ur.is_active = 1
             AND    r.is_active  = 1
@@ -37,11 +37,11 @@ class AuctionApprovalService:
         request: ApprovalActionRequest
     ):
         """
-        Main State Machine implementing the v3.0 logic[cite: 201, 447].
-        Enforces Dual-Write Rule for transactional integrity [cite: 152-155].
+        Main State Machine implementing the v3.0 logic.
+        Enforces Dual-Write Rule for transactional integrity.
         """
         
-        # 1. Map actions to required permissions as defined in the Final Matrix [cite: 407]
+        # 1. Map actions to required permissions as defined in the Final Matrix
         permission_map = {
             ApprovalAction.SUBMIT: "auction:submit",
             ApprovalAction.RESUBMIT: "auction:submit",
@@ -57,7 +57,7 @@ class AuctionApprovalService:
         if not perm_key:
             raise HTTPException(status_code=400, detail="Invalid approval action requested")
 
-        # 2. Verify Permission [cite: 160]
+        # 2. Verify Permission
         if not await AuctionApprovalService.check_permission(db, user_id, perm_key):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
@@ -68,21 +68,21 @@ class AuctionApprovalService:
         if not auction:
             raise HTTPException(status_code=404, detail="Auction not found")
 
-        # Capture initial states for immutable logging [cite: 61, 62]
+        # Capture initial states for immutable logging
         from_app_status = auction.approval_status
         from_auc_status = auction.status
         to_app_status = from_app_status
         to_auc_status = from_auc_status
 
-        # --- SUBMIT / RESUBMIT Logic [cite: 205, 223] ---
+        # --- SUBMIT / RESUBMIT Logic ---
         if request.action in [ApprovalAction.SUBMIT, ApprovalAction.RESUBMIT]:
             to_auc_status = AuctionStatus.PENDING_APPROVAL
             to_app_status = ApprovalStatus.PENDING_L1
-            # Set submitted_at timestamp only on first submit [cite: 157, 275]
+            # Set submitted_at timestamp only on first submit
             if not auction.submitted_at:
                 auction.submitted_at = datetime.utcnow()
 
-        # --- L1 APPROVE Logic [cite: 206, 359] ---
+        # --- L1 APPROVE Logic ---
         elif request.action == ApprovalAction.APPROVE_L1:
             if from_app_status != ApprovalStatus.PENDING_L1:
                 raise HTTPException(status_code=400, detail="Invalid L1 transition")
@@ -91,7 +91,7 @@ class AuctionApprovalService:
             auction.publish_l1_approved_at = datetime.utcnow()
             auction.publish_l1_remarks = request.comments
 
-        # --- L2 APPROVE Logic [cite: 207, 360] ---
+        # --- L2 APPROVE Logic ---
         elif request.action == ApprovalAction.APPROVE_L2:
             if from_app_status != ApprovalStatus.PENDING_L2:
                 raise HTTPException(status_code=400, detail="Invalid L2 transition")
@@ -100,7 +100,7 @@ class AuctionApprovalService:
             auction.publish_l2_approved_at = datetime.utcnow()
             auction.publish_l2_remarks = request.comments
 
-        # --- ADMIN APPROVE Logic (v3.0 Transition) [cite: 185, 208, 361] ---
+        # --- ADMIN APPROVE Logic (v3.0 Transition) ---
         elif request.action == ApprovalAction.APPROVE_ADMIN:
             if from_app_status != ApprovalStatus.PENDING_ADMIN:
                 raise HTTPException(status_code=400, detail="Invalid Admin approval transition")
@@ -110,30 +110,30 @@ class AuctionApprovalService:
             auction.publish_admin_approved_at = datetime.utcnow()
             auction.publish_admin_remarks = request.comments
 
-        # --- ADMIN PUBLISH Logic (OCI Trigger) [cite: 211, 362] ---
+        # --- ADMIN PUBLISH Logic (OCI Trigger) ---
         elif request.action == ApprovalAction.PUBLISH:
             if from_auc_status != AuctionStatus.APPROVED or from_app_status != ApprovalStatus.READY_TO_PUBLISH:
                 raise HTTPException(status_code=400, detail="Auction must be Admin-approved before publishing")
             to_auc_status = AuctionStatus.SCHEDULED
-            to_app_status = ApprovalStatus.PUBLISHED # Terminal state [cite: 226]
+            to_app_status = ApprovalStatus.PUBLISHED # Terminal state
             auction.published_at = datetime.utcnow()
 
-        # --- REJECT Logic [cite: 222, 363] ---
+        # --- REJECT Logic ---
         elif request.action == ApprovalAction.REJECT:
             to_auc_status = AuctionStatus.DRAFT
             to_app_status = ApprovalStatus.REJECTED
 
-        # --- CANCEL Logic [cite: 225, 365] ---
+        # --- CANCEL Logic ---
         elif request.action == ApprovalAction.CANCEL:
             to_auc_status = AuctionStatus.CANCELLED
             to_app_status = ApprovalStatus.CANCELLED
 
-        # 3. Update Auction Table (Write 1) [cite: 154]
+        # 3. Update Auction Table (Write 1)
         auction.status = to_auc_status
         auction.approval_status = to_app_status
         auction.updated_at = datetime.utcnow()
 
-        # 4. Create Approval Log entry (Write 2) [cite: 155]
+        # 4. Create Approval Log entry (Write 2)
         approval_log = AuctionApprovalLog(
             auction_id=auction_id,
             action_by=user_id,
