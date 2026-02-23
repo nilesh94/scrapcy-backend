@@ -15,6 +15,7 @@ from app.e_auction.routes.auth_dependencies import (
     RequireAuth,
     RequireBuyer
 )
+from app.e_auction.websockets.bid_handler import broadcast_bid_placed, broadcast_outbid
 
 router = APIRouter(prefix="/api/v1/e-auction/bidding", tags=["Bidding"])
 
@@ -76,6 +77,11 @@ async def place_bid(
     # Get ID from model attribute or dict key
     user_id = getattr(current_user, "id", None) or current_user.get("id")
 
+    # Capture the lot and current winner before the new bid for broadcast logic
+    from app.e_auction.models import AuctionItem
+    lot_before = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
+    old_winner_id = lot_before.winner_user_id if lot_before else None
+
     bid = BiddingService.place_bid(
         db=db,
         auction_item_id=lot_id,
@@ -85,10 +91,27 @@ async def place_bid(
         device_info=user_agent
     )
     
-    # Get lot for min next bid
-    from app.e_auction.models import AuctionItem
+    # Get lot for updated metadata
     lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
     
+    # REAL-TIME BROADCAST: Notify all watchers of new high bid
+    await broadcast_bid_placed(
+        lot_id=lot_id,
+        bid_id=bid.id,
+        bid_amount=float(bid.bid_amount),
+        bidder_user_id=user_id,
+        total_bids=lot.total_bids_count or 0,
+        unique_bidders=lot.unique_bidders_count or 0
+    )
+
+    # REAL-TIME NOTIFICATION: Specifically notify the person who was just outbid
+    if old_winner_id and old_winner_id != user_id:
+        await broadcast_outbid(
+            lot_id=lot_id,
+            outbid_user_id=old_winner_id,
+            new_highest_bid=float(bid.bid_amount)
+        )
+
     return BidSuccessResponse(
         success=True,
         message="Bid placed successfully",
