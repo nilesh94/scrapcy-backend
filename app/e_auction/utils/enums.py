@@ -17,10 +17,25 @@ class AuctionStatus(str, Enum):
 
 class ApprovalStatus(str, Enum):
     """Approval workflow statuses"""
-    PENDING = "PENDING"
-    L1_APPROVED = "L1_APPROVED"
-    L2_APPROVED = "L2_APPROVED"
+    DRAFT = "DRAFT"
+    PENDING_L1 = "PENDING_L1"
+    PENDING_L2 = "PENDING_L2"
+    PENDING_ADMIN = "PENDING_ADMIN"
+    READY_TO_PUBLISH = "READY_TO_PUBLISH"
+    PUBLISHED = "PUBLISHED"
     REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+class ApprovalAction(str, Enum):
+    """Actions for the auction approval log"""
+    SUBMIT = "SUBMIT"
+    APPROVE_L1 = "APPROVE_L1"
+    APPROVE_L2 = "APPROVE_L2"
+    APPROVE_ADMIN = "APPROVE_ADMIN"
+    REJECT = "REJECT"
+    PUBLISH = "PUBLISH"
+    CANCEL = "CANCEL"
+    RESUBMIT = "RESUBMIT"
 
 
 class LotStatus(str, Enum):
