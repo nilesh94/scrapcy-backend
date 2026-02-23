@@ -21,6 +21,8 @@ from app.models import requirements as requirement_models
 from app.e_auction.models import (
     auction as auction_models,
     auction_item as auction_item_models,
+    # Added Approval System Models
+    approval as approval_models,
     # Uncomment these as you add the files:
     # bid as bid_models,
     # participant as participant_models,
@@ -43,6 +45,8 @@ from app.routes import requirements as requirement_routes
 from app.e_auction.routes import auctions as auction_routes
 from app.e_auction.routes import admin_routes as admin_routes
 from app.e_auction.routes import lots
+# Added Approval Workflow Router
+from app.e_auction.routes import approval as approval_routes
 
 # ============================================================================
 # SETUP LOGGING
@@ -128,6 +132,12 @@ app.include_router(
     admin_routes.router,
     prefix="/api/v1/e-auction", 
     # tags=["E-Auction Admin"] <--- Tags are already in the router file
+)
+
+# 3. Approval Workflow Routes
+# Handles multi-level approvals: L1 -> L2 -> Admin sign-off 
+app.include_router(
+    approval_routes.router
 )
 
 # ============================================================================
