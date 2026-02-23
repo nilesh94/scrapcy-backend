@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
-from app.routes.users import get_current_user
+from app.e_auction.routes.auth_dependencies import get_current_user
 from app.e_auction.services.approval_service import AuctionApprovalService
 from app.e_auction.schemas.approval import ApprovalActionRequest
 from app.e_auction.utils.enums import ApprovalAction
