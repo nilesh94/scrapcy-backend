@@ -589,7 +589,7 @@ class AuctionService:
         db.flush()
         return {"lot_id": lot_id, "success_count": len(uploaded_results)}
 
-@staticmethod
+    @staticmethod
     def list_auctions_for_buyers(
         db: Session,
         page: int,
