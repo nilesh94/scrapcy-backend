@@ -5,7 +5,7 @@ All config from ENV - no hardcoded values
 """
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_, case
 from datetime import datetime
 from fastapi import UploadFile
 
@@ -594,6 +594,7 @@ class AuctionService:
         db: Session,
         page: int,
         page_size: int,
+        current_user_id: int,
         category: Optional[str] = None,
         search: Optional[str] = None
     ) -> AuctionListResponse:
@@ -601,9 +602,18 @@ class AuctionService:
         REQUIREMENT: Show all Live and Upcoming (Scheduled) auctions.
         Access to bidding is gated by EMD check in the Participation Summary.
         """
-        query = db.query(Auction).filter(
+        # Surgical Update: Query with outerjoin and case logic to calculate 'emd_paid'
+        query = db.query(Auction).outerjoin(
+            AuctionParticipant, 
+            and_(AuctionParticipant.auction_id == Auction.id, AuctionParticipant.user_id == current_user_id)
+        ).add_columns(
+            Auction,
+            case(
+                (AuctionParticipant.payment_status == 'SUCCESS', True),
+                else_=False
+            ).label("emd_paid")
+        ).filter(
             Auction.approval_status == ApprovalStatus.PUBLISHED,
-            # SURGICAL UPDATE: Include both LIVE and SCHEDULED statuses
             Auction.status.in_([AuctionStatus.LIVE, AuctionStatus.SCHEDULED])
         )
 
@@ -616,12 +626,22 @@ class AuctionService:
         skip = (page - 1) * page_size
         
         # Order by start time so soonest auctions appear first
-        auctions = query.order_by(Auction.scheduled_start_time.asc()).offset(skip).limit(page_size).all()
+        results = query.order_by(Auction.scheduled_start_time.asc()).offset(skip).limit(page_size).all()
 
-        try:
-            auction_list = [AuctionBasicResponse.model_validate(a) for a in auctions]
-        except AttributeError:
-            auction_list = [AuctionBasicResponse.from_orm(a) for a in auctions]
+        auction_list = []
+        for row in results:
+            # results contains tuples (Auction, emd_paid)
+            auction_obj = row[0]
+            emd_paid_flag = row[1]
+            
+            # Convert to dict to add the dynamic emd_paid field
+            try:
+                auction_dict = AuctionBasicResponse.model_validate(auction_obj).model_dump()
+            except AttributeError:
+                auction_dict = AuctionBasicResponse.from_orm(auction_obj).dict()
+            
+            auction_dict["emd_paid"] = emd_paid_flag
+            auction_list.append(auction_dict)
 
         return AuctionListResponse(
             total=total,
