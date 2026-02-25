@@ -67,7 +67,7 @@ async def browse_auctions(
 
 
 @router.get("/listing-public", response_model=AuctionListResponse)
-async def get_public_listing(
+async def get_public_listing-old(
     category: Optional[str] = None,
     region: Optional[str] = None,
     search: Optional[str] = None,
