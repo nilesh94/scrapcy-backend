@@ -4,14 +4,16 @@ API endpoints for auction management
 All endpoints have RBAC placeholders (commented for testing)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, status, File, UploadFile, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 import json
+from datetime import datetime
 
 from app.database.connection import get_db
 from app.e_auction.services import AuctionService
 from app.e_auction.schemas.auction import *
 from app.e_auction.schemas.auction_item import LotUpdateRequest, LotDetailResponse
+from app.e_auction.models import Auction, AuctionParticipant
 from app.e_auction.utils.exceptions import (
     AuctionNotFoundException,
     ForbiddenException,
@@ -101,17 +103,19 @@ async def get_public_listing(
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
     [OPEN API] Specialized endpoint for Buyers to see Auction listings.
     REQUIREMENT: Shows all LIVE and SCHEDULED auctions as per v3.0 visibility rules.
     """
-    # SURGICAL UPDATE: Calling specialized service method for buyer visibility
+    # Passing current_user_id to service to check EMD payment status per user
     return AuctionService.list_auctions_for_buyers(
         db=db,
         page=page,
         page_size=page_size,
+        current_user_id=current_user_id,
         category=category,
         search=search
     )
@@ -721,6 +725,7 @@ async def get_participation_summary(
     current_user = Depends(get_current_user)
 ):
     # 1. Get Auction Details
+    # Added joinedload to ensure nested items are returned for the bidding console
     auction = db.query(Auction).options(joinedload(Auction.items)).filter(Auction.id == auction_id).first()
     
     # 2. Check User Participation Status
