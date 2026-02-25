@@ -721,7 +721,7 @@ async def get_participation_summary(
     current_user = Depends(get_current_user)
 ):
     # 1. Get Auction Details
-    auction = db.query(Auction).filter(Auction.id == auction_id).first()
+    auction = db.query(Auction).options(joinedload(Auction.items)).filter(Auction.id == auction_id).first()
     
     # 2. Check User Participation Status
     participation = db.query(AuctionParticipant).filter(
