@@ -588,3 +588,45 @@ class AuctionService:
         # FIXED: Removed db.commit() to allow parent methods (create/update) to control the transaction
         db.flush()
         return {"lot_id": lot_id, "success_count": len(uploaded_results)}
+
+@staticmethod
+    def list_auctions_for_buyers(
+        db: Session,
+        page: int,
+        page_size: int,
+        category: Optional[str] = None,
+        search: Optional[str] = None
+    ) -> AuctionListResponse:
+        """
+        REQUIREMENT: Show all Live and Upcoming (Scheduled) auctions.
+        Access to bidding is gated by EMD check in the Participation Summary.
+        """
+        query = db.query(Auction).filter(
+            Auction.approval_status == ApprovalStatus.PUBLISHED,
+            # SURGICAL UPDATE: Include both LIVE and SCHEDULED statuses
+            Auction.status.in_([AuctionStatus.LIVE, AuctionStatus.SCHEDULED])
+        )
+
+        if category:
+            query = query.filter(Auction.category == category)
+        if search:
+            query = query.filter(Auction.auction_title.ilike(f"%{search}%"))
+
+        total = query.count()
+        skip = (page - 1) * page_size
+        
+        # Order by start time so soonest auctions appear first
+        auctions = query.order_by(Auction.scheduled_start_time.asc()).offset(skip).limit(page_size).all()
+
+        try:
+            auction_list = [AuctionBasicResponse.model_validate(a) for a in auctions]
+        except AttributeError:
+            auction_list = [AuctionBasicResponse.from_orm(a) for a in auctions]
+
+        return AuctionListResponse(
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=(total + page_size - 1) // page_size,
+            auctions=auction_list
+        )
