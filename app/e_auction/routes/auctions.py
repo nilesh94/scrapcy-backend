@@ -66,7 +66,7 @@ async def browse_auctions(
     )
 
 
-@router.get("/listing", response_model=AuctionListResponse)
+@router.get("/listing-public", response_model=AuctionListResponse)
 async def get_public_listing(
     category: Optional[str] = None,
     region: Optional[str] = None,
@@ -94,6 +94,27 @@ async def get_public_listing(
         public_view=True
     )
 
+@router.get("/listing", response_model=AuctionListResponse)
+async def get_public_listing(
+    category: Optional[str] = None,
+    region: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    [OPEN API] Specialized endpoint for Buyers to see Auction listings.
+    REQUIREMENT: Shows all LIVE and SCHEDULED auctions as per v3.0 visibility rules.
+    """
+    # SURGICAL UPDATE: Calling specialized service method for buyer visibility
+    return AuctionService.list_auctions_for_buyers(
+        db=db,
+        page=page,
+        page_size=page_size,
+        category=category,
+        search=search
+    )
 
 @router.get("/listing/{auction_id}", response_model=AuctionDetailResponse, response_model_exclude={
     "created_by", "seller_id", "emd_amount", "registration_fee",
