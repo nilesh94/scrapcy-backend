@@ -11,9 +11,10 @@ from datetime import datetime
 
 from app.database.connection import get_db
 from app.e_auction.websockets.connection_manager import connection_manager
-from app.e_auction.models import AuctionItem
+from app.e_auction.models import AuctionItem, Auction, AuctionParticipant
 from app.e_auction.schemas.bid import BidUpdateMessage
 from app.e_auction.config import settings
+from app.e_auction.utils.enums import AuctionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,23 @@ async def websocket_lot_bids(
     if not lot:
         await websocket.close(code=1008, reason="Lot not found")
         return
+
+    # --- Eligibility & Status Validation - Start ---
+    auction = db.query(Auction).filter(Auction.id == lot.auction_id).first()
+    if not auction or auction.status != AuctionStatus.LIVE:
+        await websocket.close(code=1008, reason="Auction is not LIVE")
+        return
+
+    participation = db.query(AuctionParticipant).filter(
+        AuctionParticipant.auction_id == lot.auction_id,
+        AuctionParticipant.user_id == user_id,
+        AuctionParticipant.payment_status == 'SUCCESS'
+    ).first()
+
+    if not participation:
+        await websocket.close(code=1008, reason="EMD Payment required for access")
+        return
+    # --- END ---
     
     # Connect
     await connection_manager.connect(websocket, lot_id, user_id)
