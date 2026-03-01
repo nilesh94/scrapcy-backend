@@ -159,7 +159,7 @@ async def get_auction_detail(
     try:
         auction = AuctionService.get_by_id(db, auction_id)
         # UPDATED: model_validate is the Pydantic V2 equivalent of from_orm
-        return AuctionDetailResponse.model_validate(auction)
+        return AuctionDetailResponse.model_validate(auction, from_attributes=True)
     except AuctionNotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -194,7 +194,7 @@ async def get_auction_management_details(
         
         # 1. Admin Override - Can see everything
         if user_role == "admin":
-            return AuctionDetailResponse.model_validate(auction)
+            return AuctionDetailResponse.model_validate(auction, from_attributes=True)
             
         # 2. Seller Check - Can see only their own
         if user_role == "seller":
@@ -204,7 +204,7 @@ async def get_auction_management_details(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You do not have permission to manage this auction."
                 )
-            return AuctionDetailResponse.model_validate(auction)
+            return AuctionDetailResponse.model_validate(auction, from_attributes=True)
         
         # 3. Deny everyone else (Buyers/Viewers shouldn't use this endpoint)
         raise HTTPException(
@@ -334,7 +334,7 @@ async def create_auction(
             lot_images=lot_images
         )
         
-        return AuctionDetailResponse.model_validate(auction)
+        return AuctionDetailResponse.model_validate(auction, from_attributes=True)
     except json.JSONDecodeError:
          raise HTTPException(status_code=400, detail="Invalid JSON format in 'data' field")
     except InvalidDateRangeException as e:
@@ -403,7 +403,7 @@ async def update_auction(
             lot_images=lot_images
         )
         
-        return AuctionDetailResponse.model_validate(updated_auction)
+        return AuctionDetailResponse.model_validate(updated_auction, from_attributes=True)
     except json.JSONDecodeError:
          raise HTTPException(status_code=400, detail="Invalid JSON format in 'data' field")
     except AuctionNotFoundException as e:
