@@ -143,7 +143,7 @@ async def get_public_auction_listing_detail(
                 detail="Auction listing is not available to the public."
             )
             
-        return AuctionDetailResponse.model_validate(auction)
+        return AuctionDetailResponse.model_validate(auction, from_attributes=True)
     except AuctionNotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -241,7 +241,7 @@ async def get_open_auction_details(
                 detail="Auction not publicly available."
             )
             
-        return AuctionDetailResponse.model_validate(auction)
+        return AuctionDetailResponse.model_validate(auction, from_attributes=True)
     except AuctionNotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
 
