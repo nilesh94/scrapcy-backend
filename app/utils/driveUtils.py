@@ -30,7 +30,7 @@ def authenticate_drive():
             creds = service_account.Credentials.from_service_account_file(
                 SERVICE_ACCOUNT_FILE, scopes=SCOPES
             )
-            return build('drive', 'v3', credentials=creds)
+            return build('drive', 'v3', credentials=creds, cache_discovery=False)
         except Exception as e:
             print(f"Service Account Error: {e}")
             # If this fails, we fall through to try the Token method
@@ -54,7 +54,7 @@ def authenticate_drive():
     if not creds or not creds.valid:
         raise Exception("No valid authentication found. Upload 'service_account.json' to server root.")
 
-    return build('drive', 'v3', credentials=creds)
+    return build('drive', 'v3', credentials=creds, cache_discovery=False)
 
 def upload_file_to_drive(file_obj, filename, mime_type):
     try:
