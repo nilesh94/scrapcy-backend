@@ -64,8 +64,9 @@ def upload_file_to_drive(file_obj, filename, mime_type):
             'name': filename,
             'parents': [PARENT_FOLDER_ID]
         }
-        
-        media = MediaIoBaseUpload(file_obj, mimetype=mime_type, resumable=True)
+
+        content = getattr(file_obj, 'file', file_obj)
+        media = MediaIoBaseUpload(content, mimetype=mime_type, resumable=True)
         
         # 1. Upload the file
         file = service.files().create(
