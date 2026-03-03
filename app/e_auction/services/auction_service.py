@@ -10,6 +10,7 @@ from datetime import datetime
 from fastapi import UploadFile, HTTPException
 import json
 
+from app.database.connection import Base
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
 from app.e_auction.schemas.auction_item import LotUpdateRequest
@@ -196,6 +197,15 @@ class AuctionService:
         except AttributeError:
             update_dict = lot_data.dict(exclude_unset=True)
 
+        # SURGICAL FIX: Sanitize condition_rating to satisfy ORA CHK_CONDITION_RATING (1-5)
+        # If rating is 0 or None, set to default 2 as per requirement
+        if 'condition_rating' in update_dict:
+            rating = update_dict.get('condition_rating')
+            if rating is None or rating < 1:
+                update_dict['condition_rating'] = 2
+            elif rating > 5:
+                update_dict['condition_rating'] = 5
+
         for field, value in update_dict.items():
             if hasattr(lot, field):
                 setattr(lot, field, value)
@@ -223,8 +233,8 @@ class AuctionService:
             db.refresh(lot)
             return lot
         except Exception as e:
-            print(f"DEBUG ERROR: Final commit failed! Type: {type(e).__name__}, Details: {str(e)}")
             db.rollback()
+            print(f"DEBUG ERROR: Final commit failed! Type: {type(e).__name__}, Details: {str(e)}")
             raise HTTPException(status_code=500, detail="Database commit failure. See server logs.")
 
     # --- Support for View/Edit Page Document Upload ---
