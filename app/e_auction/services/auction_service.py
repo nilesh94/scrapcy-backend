@@ -701,3 +701,44 @@ class AuctionService:
             total_pages=(total + page_size - 1) // page_size,
             auctions=auction_list
         )
+
+    @staticmethod
+    async def place_bid(db: Session, lot_id: int, user_id: int, amount: float):
+        """Robust bidding with row-level locking and auto-extension"""
+        # 1. Acquire Lock on the Lot Row to prevent concurrent bid issues
+        lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).with_for_update().first()
+        
+        if not lot or lot.lot_status != "LIVE":
+            raise HTTPException(status_code=400, detail="Lot is not active")
+
+        # 2. Validate Bid Amount
+        min_required = (lot.highest_bid_amount or lot.starting_bid_amount) + (lot.min_increment_amount or 0)
+        if amount < min_required:
+            raise HTTPException(status_code=400, detail=f"Bid too low. Min: {min_required}")
+
+        # 3. Update Lot State
+        lot.highest_bid_amount = amount
+        lot.winner_user_id = user_id
+        lot.total_bids_count += 1
+        lot.last_bid_time = datetime.now()
+
+        # 4. ROBUST FEATURE: Auto-Extension (Popcorn Bidding)
+        # If bid is within last 2 minutes, extend by 3 minutes
+        time_left = (lot.lot_end_time - datetime.now()).total_seconds()
+        if time_left < 120: 
+            lot.lot_end_time = lot.lot_end_time + timedelta(minutes=3)
+            lot.extension_count += 1
+
+        db.commit()
+        
+        # 5. Trigger Real-time Broadcast
+        from app.e_auction.websockets.bid_handler import broadcast_bid_placed
+        await broadcast_bid_placed(
+            lot_id=lot.id,
+            bid_id=0, # Replace with actual bid record ID if using BIDS table
+            bid_amount=amount,
+            bidder_user_id=user_id,
+            total_bids=lot.total_bids_count,
+            unique_bidders=lot.unique_bidders_count
+        )
+        return lot
