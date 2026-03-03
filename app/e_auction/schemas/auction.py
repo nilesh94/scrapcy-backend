@@ -219,6 +219,7 @@ class AuctionBasicResponse(BaseModel):
     is_featured: bool = False
     
     created_at: datetime
+    emd_paid: bool = False
     
     model_config = ConfigDict(from_attributes=True)
 
