@@ -132,10 +132,10 @@ class BiddingService:
         lot.total_bids_count = (lot.total_bids_count or 0) + 1
         lot.last_bid_time = datetime.now() # ALIGNMENT: Track local time
 
-        # Track if an extension actually happened for real-time broadcast
-        original_end_time = lot.lot_end_time
-        BiddingService._handle_auto_extension(lot)
-        bid.is_extended = lot.lot_end_time > original_end_time 
+        # Capture the extension minutes for real-time broadcast
+        extended_minutes = BiddingService._handle_auto_extension(lot)
+        bid.is_extended = extended_minutes > 0
+        bid.extension_minutes = extended_minutes # Pass this to the route
 
         db.commit()
         db.refresh(bid)
@@ -144,10 +144,11 @@ class BiddingService:
         return bid
 
     @staticmethod
-    def _handle_auto_extension(lot: AuctionItem):
+    def _handle_auto_extension(lot: AuctionItem) -> int:
         """
         Industrial Precision Anti-Sniping Logic.
         If bid is within trigger window, extend the end time.
+        Returns the number of minutes extended.
         """
         # Inherit settings from parent auction if not set on lot
         from app.e_auction.models import Auction
@@ -155,7 +156,7 @@ class BiddingService:
         
         enable_ext = lot.enable_extension if lot.enable_extension is not None else auction.enable_extension
         if not enable_ext:
-            return
+            return 0
 
         window_mins = lot.extension_trigger_window_minutes or auction.extension_trigger_window_minutes or 2
         ext_mins = lot.extension_duration_minutes or auction.extension_duration_minutes or 5
@@ -170,7 +171,8 @@ class BiddingService:
             if time_left <= timedelta(minutes=window_mins) and time_left > timedelta(0):
                 lot.lot_end_time = lot.lot_end_time + timedelta(minutes=ext_mins)
                 lot.extension_count = (lot.extension_count or 0) + 1
-                # Log extension via WebSocket later
+                return ext_mins # Return the actual minutes added
+        return 0
     
     @staticmethod
     def create_auto_bid(
