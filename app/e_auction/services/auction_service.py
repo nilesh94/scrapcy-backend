@@ -217,15 +217,15 @@ class AuctionService:
 
         # Wrap commit in try-except to debug 500 errors post-upload
         try:
-            print(f"DEBUG: Attempting final commit for lot {lot_id}...")
+            print(f"DEBUG: Attempting final commit for lot {lot_id}")
             db.commit()
-            print("DEBUG: Commit successful")
+            print(f"DEBUG: Commit successful for lot {lot_id}")
             db.refresh(lot)
             return lot
         except Exception as e:
-            db.rollback()
             print(f"DEBUG ERROR: Final commit failed! Type: {type(e).__name__}, Details: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Database synchronization failed: {str(e)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database commit failure. See server logs.")
 
     # --- Support for View/Edit Page Document Upload ---
     @staticmethod
@@ -594,7 +594,7 @@ class AuctionService:
                 new_image = AuctionItemImage(
                     item_id=lot_id,
                     image_url=drive_res.get('url'),
-                    file_name=original_name,           # Clean name for easy search/audit
+                    file_name=original_name[:250],           # Clean name with truncation to fit VARCHAR2(255)
                     drive_file_id=drive_res.get('id'), # Unique Drive ID
                     file_size=size_in_bytes,
                     is_primary=1 if idx == 0 else 0,
@@ -610,10 +610,15 @@ class AuctionService:
                 print(f"DEBUG ERROR: save_lot_images failed at index {idx} ({img.filename}): {str(e)}")
                 raise e
         
-        # FIXED: Removed db.commit() to allow parent methods (create/update) to control the transaction
-        print("DEBUG: Executing db.flush() for new images")
-        db.flush()
-        print("DEBUG: Database flush successful")
+        # Catch exact Oracle error during flush
+        try:
+            print("DEBUG: Executing db.flush() for new images")
+            db.flush()
+            print("DEBUG: Database flush successful")
+        except Exception as flush_err:
+            print(f"DEBUG ERROR: Oracle Flush Failed! Details: {str(flush_err)}")
+            raise flush_err
+
         return {"lot_id": lot_id, "success_count": len(uploaded_results)}
 
     @staticmethod
