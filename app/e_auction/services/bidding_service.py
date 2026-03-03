@@ -147,29 +147,31 @@ class BiddingService:
     def _handle_auto_extension(lot: AuctionItem) -> int:
         """
         Industrial Precision Anti-Sniping Logic.
-        Uses DB configuration: ENABLE_EXTENSION, TRIGGER_WINDOW, DURATION.
-        Returns the number of minutes extended.
+        Uses exact DB configuration. Returns 0 if not configured/enabled.
         """
         auction = lot.auction 
         
-        # Pull configuration from DB columns (describe scrapcy_app.auctions)
+        # Check if extension is explicitly enabled in DB
         enable_ext = auction.ENABLE_EXTENSION if hasattr(auction, 'ENABLE_EXTENSION') else auction.enable_extension
         if not enable_ext:
             return 0
 
-        window_mins = auction.EXTENSION_TRIGGER_WINDOW_MINUTES or 5
-        ext_mins = auction.EXTENSION_DURATION_MINUTES or 5
+        # Pull exact configurations from DB
+        window_mins = auction.EXTENSION_TRIGGER_WINDOW_MINUTES or 0
+        ext_mins = auction.EXTENSION_DURATION_MINUTES or 0
         min_bids = auction.EXTENSION_MIN_TOTAL_BIDS or 1
 
-        if lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
+        # Only proceed if we have a valid duration configured
+        if ext_mins > 0 and lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
             now = datetime.now()
             time_left = lot.lot_end_time - now
             
-            # Use dynamic window_mins from DB
+            # If bid is within the configured sniping window
             if time_left <= timedelta(minutes=window_mins) and time_left > timedelta(0):
                 lot.lot_end_time = lot.lot_end_time + timedelta(minutes=ext_mins)
                 lot.extension_count = (lot.extension_count or 0) + 1
                 return ext_mins
+        
         return 0
     
     @staticmethod
