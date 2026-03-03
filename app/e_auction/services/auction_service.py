@@ -563,6 +563,7 @@ class AuctionService:
     @staticmethod
     async def save_lot_images(db: Session, lot_id: int, images: List[UploadFile]):
         uploaded_results = []
+        print(f"DEBUG: Starting database sync for lot {lot_id} images")
         
         for idx, img in enumerate(images):
             try:
@@ -586,6 +587,7 @@ class AuctionService:
                     filename=unique_storage_name,
                     mime_type=img.content_type
                 )
+                print(f"DEBUG: Drive upload finished for {img.filename}")
 
                 # 4. Save Record to auction_item_images table
                 new_image = AuctionItemImage(
@@ -600,13 +602,17 @@ class AuctionService:
                 
                 db.add(new_image)
                 uploaded_results.append(drive_res.get('url'))
+                print(f"DEBUG: AuctionItemImage record added to flush queue")
 
             except Exception as e:
                 # ADDED: DEBUG log to identify why uploads might fail
-                print(f"DEBUG: Failed upload for {img.filename} in lot {lot_id}: {str(e)}")
+                print(f"DEBUG ERROR: save_lot_images failed at index {idx}: {str(e)}")
+                raise e
         
         # FIXED: Removed db.commit() to allow parent methods (create/update) to control the transaction
+        print("DEBUG: Executing db.flush() for new images")
         db.flush()
+        print("DEBUG: Database flush successful")
         return {"lot_id": lot_id, "success_count": len(uploaded_results)}
 
     @staticmethod
