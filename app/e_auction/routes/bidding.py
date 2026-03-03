@@ -104,10 +104,11 @@ async def place_bid(
         unique_bidders=lot.unique_bidders_count or 0
     )
 
-    # SURGICAL ADDITION: Specifically notify everyone if the clock was extended
-    # This ensures React countdowns update live without refresh
+    # SURGICAL DYNAMIC UPDATE: Uses exact duration from DB config
     if getattr(bid, 'is_extended', False):
-        await broadcast_extension(lot_id=lot_id, extension_minutes=lot.extension_duration_minutes or 5)
+        ext_mins = getattr(bid, 'extension_minutes', 0)
+        if ext_mins > 0:
+            await broadcast_extension(lot_id=lot_id, extension_minutes=ext_mins)
 
     # REAL-TIME NOTIFICATION: Specifically notify the person who was just outbid
     if old_winner_id and old_winner_id != user_id:
