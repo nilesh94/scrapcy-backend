@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_, case
 from datetime import datetime
 from fastapi import UploadFile, HTTPException
+import json
 
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
@@ -216,14 +217,14 @@ class AuctionService:
 
         # Wrap commit in try-except to debug 500 errors post-upload
         try:
-            print("DEBUG: Finalizing DB transaction for lot update...")
+            print(f"DEBUG: Attempting final commit for lot {lot_id}...")
             db.commit()
+            print("DEBUG: Commit successful")
             db.refresh(lot)
-            print("DEBUG: Lot update successful")
             return lot
         except Exception as e:
             db.rollback()
-            print(f"DEBUG ERROR: Database commit failed for lot {lot_id}: {str(e)}")
+            print(f"DEBUG ERROR: Final commit failed! Type: {type(e).__name__}, Details: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Database synchronization failed: {str(e)}")
 
     # --- Support for View/Edit Page Document Upload ---
@@ -572,7 +573,7 @@ class AuctionService:
                 size_in_bytes = img.file.tell()
                 img.file.seek(0)
                 
-                # FIXED: Cleanup original_name to remove internal prefixes for a cleaner DB Audit
+                # Cleanup original_name to remove internal prefixes for a cleaner DB Audit
                 original_name = img.filename
                 if "___" in original_name: original_name = original_name.split("___")[-1]
                 if "_file_" in original_name: original_name = original_name.split("_", 3)[-1]
@@ -587,7 +588,7 @@ class AuctionService:
                     filename=unique_storage_name,
                     mime_type=img.content_type
                 )
-                print(f"DEBUG: Drive upload finished for {img.filename}")
+                print(f"DEBUG: Drive upload finished for {original_name}")
 
                 # 4. Save Record to auction_item_images table
                 new_image = AuctionItemImage(
@@ -602,11 +603,11 @@ class AuctionService:
                 
                 db.add(new_image)
                 uploaded_results.append(drive_res.get('url'))
-                print(f"DEBUG: AuctionItemImage record added to flush queue")
+                print(f"DEBUG: AuctionItemImage record added to flush queue for {original_name}")
 
             except Exception as e:
                 # ADDED: DEBUG log to identify why uploads might fail
-                print(f"DEBUG ERROR: save_lot_images failed at index {idx}: {str(e)}")
+                print(f"DEBUG ERROR: save_lot_images failed at index {idx} ({img.filename}): {str(e)}")
                 raise e
         
         # FIXED: Removed db.commit() to allow parent methods (create/update) to control the transaction
