@@ -66,14 +66,14 @@ class BiddingService:
             raise UserNotRegisteredForAuctionException()
 
         # DISPATCHER: Route to specific engine logic based on Auction Type
-        if lot.auction_type == AuctionType.FORWARD:
+        if lot.lot_auction_type == AuctionType.FORWARD:
             return BiddingService._execute_forward_bid(db, lot, auction, user_id, bid_amount, ip_address, device_info)
         
-        elif lot.auction_type == AuctionType.REVERSE:
+        elif lot.lot_auction_type == AuctionType.REVERSE:
             return BiddingService._execute_reverse_bid(db, lot, auction, user_id, bid_amount, ip_address, device_info)
             
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported auction type engine: {lot.auction_type}")
+            raise HTTPException(status_code=400, detail=f"Unsupported auction type engine: {lot.lot_auction_type}")
 
     @staticmethod
     def _execute_forward_bid(db: Session, lot: AuctionItem, auction: Auction, user_id: int, bid_amount: Decimal, ip: str, device: Optional[str]) -> Bid:
@@ -130,10 +130,13 @@ class BiddingService:
         lot.highest_bid_amount = bid_amount
         lot.winner_user_id = user_id
         lot.total_bids_count = (lot.total_bids_count or 0) + 1
+        lot.last_bid_time = datetime.now() # ALIGNMENT: Track local time
 
-        # Check for Auto-Extension (Anti-Sniping)
+        # Track if an extension actually happened for real-time broadcast
+        original_end_time = lot.lot_end_time
         BiddingService._handle_auto_extension(lot)
-        
+        bid.is_extended = lot.lot_end_time > original_end_time 
+
         db.commit()
         db.refresh(bid)
         
@@ -159,7 +162,8 @@ class BiddingService:
         min_bids = lot.extension_min_total_bids or auction.extension_min_total_bids or 1
 
         if lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
-            now = datetime.utcnow()
+            # ALIGNMENT: Use local now() to match model and transaction time
+            now = datetime.now()
             time_left = lot.lot_end_time - now
             
             # If bid is within the 'sniping window'
