@@ -10,7 +10,6 @@ from datetime import datetime
 from fastapi import UploadFile, HTTPException
 import json
 
-from app.database.connection import Base
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
 from app.e_auction.schemas.auction_item import LotUpdateRequest
@@ -136,6 +135,13 @@ class AuctionService:
                 else:
                     lot_dict['location_address'] = str(pincode)
 
+            # Sanitize rating for fresh auctions to prevent ORA check constraint violation
+            rating = lot_dict.get('condition_rating')
+            if rating is None or (isinstance(rating, (int, float)) and rating < 1):
+                lot_dict['condition_rating'] = 2
+            elif isinstance(rating, (int, float)) and rating > 5:
+                lot_dict['condition_rating'] = 5
+
             # Create AuctionItem linked to this auction
             new_lot = AuctionItem(
                 auction_id=auction.id,
@@ -201,9 +207,9 @@ class AuctionService:
         # If rating is 0 or None, set to default 2 as per requirement
         if 'condition_rating' in update_dict:
             rating = update_dict.get('condition_rating')
-            if rating is None or rating < 1:
+            if rating is None or (isinstance(rating, (int, float)) and rating < 1):
                 update_dict['condition_rating'] = 2
-            elif rating > 5:
+            elif isinstance(rating, (int, float)) and rating > 5:
                 update_dict['condition_rating'] = 5
 
         for field, value in update_dict.items():
@@ -676,13 +682,16 @@ class AuctionService:
             auction_obj = row[0]
             emd_paid_flag = row[1]
             
-            # Convert to dict to add the dynamic emd_paid field
+            # Force inclusion of emd_paid in the dictionary regardless of schema filtering
             try:
-                auction_dict = AuctionBasicResponse.model_validate(auction_obj).model_dump()
+                # model_validate evaluates dynamic attributes correctly
+                auction_dict = AuctionBasicResponse.model_validate(auction_obj, from_attributes=True).model_dump()
             except AttributeError:
+                # Handle legacy Pydantic environments
                 auction_dict = AuctionBasicResponse.from_orm(auction_obj).dict()
             
-            auction_dict["emd_paid"] = emd_paid_flag
+            # Manually inject the flag derived from the join logic
+            auction_dict["emd_paid"] = bool(emd_paid_flag)
             auction_list.append(auction_dict)
 
         return AuctionListResponse(
