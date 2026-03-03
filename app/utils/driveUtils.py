@@ -58,17 +58,28 @@ def authenticate_drive():
 
 def upload_file_to_drive(file_obj, filename, mime_type):
     try:
+        print(f"DEBUG: Starting upload for {filename} ({mime_type})") # LOG 1
         service = authenticate_drive()
+        print("DEBUG: Drive authentication successful") # LOG 2
         
         file_metadata = {
             'name': filename,
             'parents': [PARENT_FOLDER_ID]
         }
-
-        content = getattr(file_obj, 'file', file_obj)
-        media = MediaIoBaseUpload(content, mimetype=mime_type, resumable=True)
+        
+        # Determine the raw stream
+        raw_stream = getattr(file_obj, 'file', file_obj)
+        print(f"DEBUG: raw_stream type: {type(raw_stream)}") # LOG 3
+        
+        if hasattr(raw_stream, 'seek'):
+            print("DEBUG: Resetting stream pointer via seek(0)") # LOG 4
+            raw_stream.seek(0)
+            
+        media = MediaIoBaseUpload(raw_stream, mimetype=mime_type, resumable=True)
+        print("DEBUG: MediaIoBaseUpload object created") # LOG 5
         
         # 1. Upload the file
+        print("DEBUG: Initiating service.files().create().execute()") # LOG 6
         file = service.files().create(
             body=file_metadata,
             media_body=media,
@@ -76,16 +87,17 @@ def upload_file_to_drive(file_obj, filename, mime_type):
         ).execute()
         
         file_id = file.get('id')
+        print(f"DEBUG: Upload complete. File ID: {file_id}") # LOG 7
         
-        # 2. Make it Public (Anyone with link can view)
-        # Note: Service Accounts permission handling is more robust
+        # 2. Make it Public
         try:
             service.permissions().create(
                 fileId=file_id,
                 body={'type': 'anyone', 'role': 'reader'},
             ).execute()
+            print("DEBUG: Public permissions set") # LOG 8
         except Exception as p_err:
-            print(f"Warning: Could not set public permission: {p_err}")
+            print(f"DEBUG WARNING: Could not set permissions: {p_err}")
 
         # 3. Generate High-Quality Display Link
         direct_link = f"https://drive.google.com/thumbnail?id={file_id}&sz=s4000"
@@ -96,7 +108,7 @@ def upload_file_to_drive(file_obj, filename, mime_type):
         }
 
     except Exception as e:
-        print(f"Drive Upload Error: {e}")
+        print(f"DEBUG ERROR: Drive Upload failed at step. Details: {str(e)}") # LOG 9
         raise e
 
 def delete_file_from_drive(file_id):
