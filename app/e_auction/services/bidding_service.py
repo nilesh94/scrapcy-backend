@@ -4,7 +4,7 @@ Business logic for bidding operations
 Optimized for performance - handles high-volume bidding
 """
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload
 from sqlalchemy import and_, func
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -38,8 +38,8 @@ class BiddingService:
         - Bid amount is valid (based on engine type)
         - User is not the seller
         """
-        # Get lot with PESSIMISTIC LOCK to handle simultaneous last-minute bids
-        lot = db.query(AuctionItem).with_for_update().filter(AuctionItem.id == auction_item_id).first()
+        # Get lot with PESSIMISTIC LOCK. noload prevents ORA-02014 by removing joined-image subquery.
+        lot = db.query(AuctionItem).options(noload(AuctionItem.images)).with_for_update().filter(AuctionItem.id == auction_item_id).first()
         if not lot:
             raise LotNotFoundException(auction_item_id)
         
@@ -132,7 +132,7 @@ class BiddingService:
         lot.total_bids_count = (lot.total_bids_count or 0) + 1
         lot.last_bid_time = datetime.now() # ALIGNMENT: Track local time
 
-        # SURGICAL UPDATE: Use configurable logic to calculate extension
+        # Handle Auto-Extension and capture minutes for WebSocket broadcast
         extended_minutes = BiddingService._handle_auto_extension(lot)
         bid.is_extended = extended_minutes > 0
         bid.extension_minutes = extended_minutes 
