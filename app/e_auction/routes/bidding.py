@@ -15,7 +15,7 @@ from app.e_auction.routes.auth_dependencies import (
     RequireAuth,
     RequireBuyer
 )
-from app.e_auction.websockets.bid_handler import broadcast_bid_placed, broadcast_outbid
+from app.e_auction.websockets.bid_handler import broadcast_bid_placed, broadcast_outbid, broadcast_extension
 
 router = APIRouter(prefix="/api/v1/e-auction/bidding", tags=["Bidding"])
 
@@ -103,6 +103,11 @@ async def place_bid(
         total_bids=lot.total_bids_count or 0,
         unique_bidders=lot.unique_bidders_count or 0
     )
+
+    # SURGICAL ADDITION: Specifically notify everyone if the clock was extended
+    # This ensures React countdowns update live without refresh
+    if getattr(bid, 'is_extended', False):
+        await broadcast_extension(lot_id=lot_id, extension_minutes=lot.extension_duration_minutes or 5)
 
     # REAL-TIME NOTIFICATION: Specifically notify the person who was just outbid
     if old_winner_id and old_winner_id != user_id:
