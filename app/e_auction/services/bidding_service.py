@@ -132,10 +132,10 @@ class BiddingService:
         lot.total_bids_count = (lot.total_bids_count or 0) + 1
         lot.last_bid_time = datetime.now() # ALIGNMENT: Track local time
 
-        # Capture the extension minutes for real-time broadcast
+        # SURGICAL UPDATE: Use configurable logic to calculate extension
         extended_minutes = BiddingService._handle_auto_extension(lot)
         bid.is_extended = extended_minutes > 0
-        bid.extension_minutes = extended_minutes # Pass this to the route
+        bid.extension_minutes = extended_minutes 
 
         db.commit()
         db.refresh(bid)
@@ -147,31 +147,29 @@ class BiddingService:
     def _handle_auto_extension(lot: AuctionItem) -> int:
         """
         Industrial Precision Anti-Sniping Logic.
-        If bid is within trigger window, extend the end time.
+        Uses DB configuration: ENABLE_EXTENSION, TRIGGER_WINDOW, DURATION.
         Returns the number of minutes extended.
         """
-        # Inherit settings from parent auction if not set on lot
-        from app.e_auction.models import Auction
-        auction = lot.auction # Relationship access
+        auction = lot.auction 
         
-        enable_ext = lot.enable_extension if lot.enable_extension is not None else auction.enable_extension
+        # Pull configuration from DB columns (describe scrapcy_app.auctions)
+        enable_ext = auction.ENABLE_EXTENSION if hasattr(auction, 'ENABLE_EXTENSION') else auction.enable_extension
         if not enable_ext:
             return 0
 
-        window_mins = lot.extension_trigger_window_minutes or auction.extension_trigger_window_minutes or 2
-        ext_mins = lot.extension_duration_minutes or auction.extension_duration_minutes or 5
-        min_bids = lot.extension_min_total_bids or auction.extension_min_total_bids or 1
+        window_mins = auction.EXTENSION_TRIGGER_WINDOW_MINUTES or 5
+        ext_mins = auction.EXTENSION_DURATION_MINUTES or 5
+        min_bids = auction.EXTENSION_MIN_TOTAL_BIDS or 1
 
         if lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
-            # ALIGNMENT: Use local now() to match model and transaction time
             now = datetime.now()
             time_left = lot.lot_end_time - now
             
-            # If bid is within the 'sniping window'
+            # Use dynamic window_mins from DB
             if time_left <= timedelta(minutes=window_mins) and time_left > timedelta(0):
                 lot.lot_end_time = lot.lot_end_time + timedelta(minutes=ext_mins)
                 lot.extension_count = (lot.extension_count or 0) + 1
-                return ext_mins # Return the actual minutes added
+                return ext_mins
         return 0
     
     @staticmethod
