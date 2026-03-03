@@ -7,7 +7,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_, case
 from datetime import datetime
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 
 from app.e_auction.models import Auction, AuctionItem, AuctionParticipant
 from app.e_auction.schemas.auction import *
@@ -196,7 +196,8 @@ class AuctionService:
             update_dict = lot_data.dict(exclude_unset=True)
 
         for field, value in update_dict.items():
-            setattr(lot, field, value)
+            if hasattr(lot, field):
+                setattr(lot, field, value)
 
         # 2. Handle Image Deletions
         if delete_image_ids:
@@ -210,11 +211,20 @@ class AuctionService:
             # We use "lot_0_" filtering because frontend uses lot_0_ prefix for single item PUTs
             lot_specific_files = [f for f in images if "lot_0_" in f.filename]
             if lot_specific_files:
+                print(f"DEBUG: Found {len(lot_specific_files)} images to upload for lot {lot_id}")
                 await AuctionService.save_lot_images(db, lot_id, lot_specific_files)
 
-        db.commit()
-        db.refresh(lot)
-        return lot
+        # Wrap commit in try-except to debug 500 errors post-upload
+        try:
+            print("DEBUG: Finalizing DB transaction for lot update...")
+            db.commit()
+            db.refresh(lot)
+            print("DEBUG: Lot update successful")
+            return lot
+        except Exception as e:
+            db.rollback()
+            print(f"DEBUG ERROR: Database commit failed for lot {lot_id}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Database synchronization failed: {str(e)}")
 
     # --- Support for View/Edit Page Document Upload ---
     @staticmethod
@@ -469,6 +479,16 @@ class AuctionService:
         db.refresh(auction)
         return auction
     
+    @staticmethod
+    def publish_auction_for_buyers(db: Session, auction_id: int) -> Auction:
+        """Specific publishing for testing with evaluation attributes enabled"""
+        auction = AuctionService.get_by_id(db, auction_id)
+        auction.status = AuctionStatus.LIVE
+        auction.approval_status = ApprovalStatus.PUBLISHED
+        db.commit()
+        db.refresh(auction)
+        return auction
+
     @staticmethod
     def close_auction(db: Session, auction_id: int) -> Auction:
         """Close auction"""
