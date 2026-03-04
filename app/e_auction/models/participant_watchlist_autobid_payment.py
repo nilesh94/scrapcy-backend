@@ -2,10 +2,11 @@
 Additional Models: Participant, Watchlist, AutoBid, Payment
 Mapped to SCRAPCY_APP schema
 """
-from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, CLOB, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, CLOB, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
+from datetime import datetime, timezone
 
 
 # ============================================================================
@@ -38,7 +39,8 @@ class AuctionParticipant(Base):
     
     # Audit
     ip_address = Column("IP_ADDRESS", String(50))
-    registered_at = Column("REGISTERED_AT", TIMESTAMP(6), server_default=func.current_timestamp())
+    # SaaS Standard: Timezone-aware registration tracking
+    registered_at = Column("REGISTERED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
     
     # Relationships
     auction = relationship("Auction", back_populates="participants")
@@ -67,7 +69,8 @@ class Watchlist(Base):
     id = Column("ID", Integer, primary_key=True, autoincrement=True)
     user_id = Column("USER_ID", Integer, nullable=False)
     auction_item_id = Column("AUCTION_ITEM_ID", Integer, ForeignKey("SCRAPCY_APP.AUCTION_ITEMS.ID"), nullable=False)
-    created_at = Column("CREATED_AT", TIMESTAMP(6), server_default=func.current_timestamp())
+    # SaaS Standard: Timezone-aware creation
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
     
     # Relationships
     auction_item = relationship("AuctionItem", back_populates="watchlist_entries")
@@ -97,8 +100,9 @@ class AutoBid(Base):
     status = Column("STATUS", String(20), default="ACTIVE")  # ACTIVE, OUTBID, CANCELLED, EXHAUSTED
     
     # Audit
-    created_at = Column("CREATED_AT", TIMESTAMP(6), server_default=func.current_timestamp())
-    updated_at = Column("UPDATED_AT", TIMESTAMP(6), onupdate=func.current_timestamp())
+    # SaaS Standard: Timezone-aware audit fields
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
+    updated_at = Column("UPDATED_AT", DateTime(timezone=True), onupdate=func.current_timestamp())
     
     # Relationships
     auction_item = relationship("AuctionItem", back_populates="auto_bids")
@@ -146,8 +150,9 @@ class Payment(Base):
     refund_transaction_id = Column("REFUND_TRANSACTION_ID", String(255))
     refund_amount = Column("REFUND_AMOUNT", Float)
     refund_status = Column("REFUND_STATUS", String(50))
-    refund_initiated_at = Column("REFUND_INITIATED_AT", TIMESTAMP(6))
-    refund_completed_at = Column("REFUND_COMPLETED_AT", TIMESTAMP(6))
+    # SaaS Standard: Timezone-aware refund tracking
+    refund_initiated_at = Column("REFUND_INITIATED_AT", DateTime(timezone=True))
+    refund_completed_at = Column("REFUND_COMPLETED_AT", DateTime(timezone=True))
     refund_reason = Column("REFUND_REASON", String(500))
     
     # Additional
@@ -155,9 +160,10 @@ class Payment(Base):
     fee_breakdown_json = Column("FEE_BREAKDOWN_JSON", CLOB)
     
     # Audit
-    created_at = Column("CREATED_AT", TIMESTAMP(6), server_default=func.current_timestamp())
-    processed_at = Column("PROCESSED_AT", TIMESTAMP(6))
-    updated_at = Column("UPDATED_AT", TIMESTAMP(6), onupdate=func.current_timestamp())
+    # SaaS Standard: Using DateTime(timezone=True) for precise global processing
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
+    processed_at = Column("PROCESSED_AT", DateTime(timezone=True))
+    updated_at = Column("UPDATED_AT", DateTime(timezone=True), onupdate=func.current_timestamp())
     ip_address = Column("IP_ADDRESS", String(50))
     
     # Relationships
