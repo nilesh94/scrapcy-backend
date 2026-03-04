@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, text
+from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, text, DateTime
+from sqlalchemy.sql import func
 from app.database.connection import Base
 
 class BuyerRequirement(Base):
@@ -28,5 +29,6 @@ class BuyerRequirement(Base):
     # Status including 'DELETED'
     status = Column("STATUS", String(20), default="OPEN")
     
-    created_at = Column("CREATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
-    updated_at = Column("UPDATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
+    # SaaS Standard: Using timezone-aware DateTime for global requirements tracking
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
+    updated_at = Column("UPDATED_AT", DateTime(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
