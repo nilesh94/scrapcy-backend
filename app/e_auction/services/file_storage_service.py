@@ -6,7 +6,7 @@ Configured via ENV: STORAGE_PROVIDER
 import os
 import shutil
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import mimetypes
 
@@ -53,7 +53,8 @@ class FileStorageService:
             raise InvalidFileTypeException(allowed_extensions)
         
         # Generate unique filename
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        # SaaS FIX: Use UTC for unique filename timestamp
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
         unique_name = f"{timestamp}_{file_name}"
         
         # Route to appropriate storage
