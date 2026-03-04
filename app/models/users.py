@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, TIMESTAMP, text
+from sqlalchemy import Column, Integer, String, TIMESTAMP, text, DateTime
+from sqlalchemy.sql import func
 from app.database.connection import Base
 
 class User(Base):
@@ -33,6 +34,7 @@ class User(Base):
     email_verified = Column("EMAIL_VERIFIED", Integer, default=0)
     gst_verified = Column("GST_VERIFIED", Integer, default=0)
 
-    created_at = Column("CREATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
-    updated_at = Column("UPDATED_AT", TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
-    last_login_at = Column("LAST_LOGIN_AT", TIMESTAMP, nullable=True)
+    # SaaS Standard: Using timezone-aware DateTime for global user auditing
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
+    updated_at = Column("UPDATED_AT", DateTime(timezone=True), server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+    last_login_at = Column("LAST_LOGIN_AT", DateTime(timezone=True), nullable=True)
