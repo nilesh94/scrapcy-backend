@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- HELPER SCHEMAS (FIXED: MATCH DB COLUMN NAMES) ---
 class CategoryOut(BaseModel):
@@ -54,7 +54,7 @@ class ScrapListingBase(BaseModel):
     form_id: Optional[int] = None 
     grade_id: Optional[int] = None
 
-    scrap_type: str            
+    scrap_type: str             
     grade: Optional[str] = None 
     
     description: Optional[str] = None
@@ -81,6 +81,9 @@ class ScrapListingResponse(ScrapListingBase):
     grade_ref: Optional[GradeOut] = None
 
     images: List[ScrapImageResponse] = []
+    
+    # SaaS Standard: Include server_time for frontend synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,5 +120,8 @@ class CategoryHierarchyResponse(BaseModel):
     material_category: str
     is_active: bool = True
     materials: List[MaterialHierarchyResponse] = []
+    
+    # SaaS Standard: Include server_time for hierarchy synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(from_attributes=True)
