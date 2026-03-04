@@ -3,7 +3,7 @@ Notification Background Tasks
 Send email, SMS, and push notifications
 """
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 import logging
 
@@ -44,7 +44,8 @@ async def process_pending_notifications():
                     await send_push_notification(notification)
                 
                 # Mark as sent
-                notification.sent_at = datetime.now()
+                # SaaS FIX: Use UTC-aware timestamp for notification audit
+                notification.sent_at = datetime.now(timezone.utc)
                 db.commit()
                 
                 sent_count += 1
@@ -73,18 +74,18 @@ async def send_email_notification(notification: Notification):
     try:
         # TODO: Implement actual email sending
         # if settings.EMAIL_PROVIDER == "sendgrid":
-        #     from sendgrid import SendGridAPIClient
-        #     from sendgrid.helpers.mail import Mail
-        #     
-        #     message = Mail(
-        #         from_email=settings.EMAIL_FROM,
-        #         to_emails=user.email,
-        #         subject=notification.title,
-        #         html_content=notification.message
-        #     )
-        #     
-        #     sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
-        #     response = sg.send(message)
+        #      from sendgrid import SendGridAPIClient
+        #      from sendgrid.helpers.mail import Mail
+        #      
+        #      message = Mail(
+        #          from_email=settings.EMAIL_FROM,
+        #          to_emails=user.email,
+        #          subject=notification.title,
+        #          html_content=notification.message
+        #      )
+        #      
+        #      sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        #      response = sg.send(message)
         
         logger.info(f"📧 Email sent for notification {notification.id}")
         
@@ -101,18 +102,18 @@ async def send_sms_notification(notification: Notification):
     try:
         # TODO: Implement actual SMS sending
         # if settings.SMS_PROVIDER == "msg91":
-        #     import requests
-        #     
-        #     url = "https://api.msg91.com/api/v5/flow/"
-        #     payload = {
-        #         "authkey": settings.MSG91_AUTH_KEY,
-        #         "mobiles": user.phone,
-        #         "message": notification.message,
-        #         "sender": settings.MSG91_SENDER_ID,
-        #         "route": settings.MSG91_ROUTE
-        #     }
-        #     
-        #     response = requests.post(url, json=payload)
+        #      import requests
+        #      
+        #      url = "https://api.msg91.com/api/v5/flow/"
+        #      payload = {
+        #          "authkey": settings.MSG91_AUTH_KEY,
+        #          "mobiles": user.phone,
+        #          "message": notification.message,
+        #          "sender": settings.MSG91_SENDER_ID,
+        #          "route": settings.MSG91_ROUTE
+        #      }
+        #      
+        #      response = requests.post(url, json=payload)
         
         logger.info(f"📱 SMS sent for notification {notification.id}")
         
@@ -164,7 +165,9 @@ async def notify_auction_started(auction_id: int):
                     send_email=True,
                     send_sms=True,
                     send_push=True,
-                    send_in_app=True
+                    send_in_app=True,
+                    # SaaS FIX: Set UTC creation timestamp
+                    created_at=datetime.now(timezone.utc)
                 )
                 
                 db.add(notification)
@@ -214,7 +217,9 @@ async def notify_auction_ended(auction_id: int):
                         send_email=True,
                         send_sms=True,
                         send_push=True,
-                        send_in_app=True
+                        send_in_app=True,
+                        # SaaS FIX: Set UTC creation timestamp
+                        created_at=datetime.now(timezone.utc)
                     )
                     db.add(winner_notification)
                     notified_count += 1
@@ -256,7 +261,9 @@ async def notify_outbid(auction_item_id: int, outbid_user_id: int, new_bid_amoun
             send_email=False,  # Too frequent for email
             send_sms=False,
             send_push=True,
-            send_in_app=True
+            send_in_app=True,
+            # SaaS FIX: Set UTC creation timestamp
+            created_at=datetime.now(timezone.utc)
         )
         
         db.add(notification)
@@ -313,7 +320,9 @@ async def notify_payment_due(user_id: int, auction_item_id: int, amount: float):
             send_email=True,
             send_sms=True,
             send_push=True,
-            send_in_app=True
+            send_in_app=True,
+            # SaaS FIX: Set UTC creation timestamp
+            created_at=datetime.now(timezone.utc)
         )
         
         db.add(notification)
