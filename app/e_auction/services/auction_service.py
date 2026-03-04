@@ -6,7 +6,7 @@ All config from ENV - no hardcoded values
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_, case
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import UploadFile, HTTPException
 import json
 
@@ -58,7 +58,8 @@ class AuctionService:
         if terms_file:
             try:
                 # REQUIREMENT: Filename + Timestamp separated by '___'
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                # SaaS FIX: Use UTC for unique filename timestamp
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
                 unique_filename = f"{terms_file.filename}___{timestamp}"
 
                 upload_res = upload_file_to_drive(
@@ -101,6 +102,9 @@ class AuctionService:
             terms_and_conditions=auction_data.terms_and_conditions,
             # Use the calculated doc URL
             auction_doc_url=internal_doc_url,
+            # SaaS FIX: Set UTC created/updated at
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
         
         db.add(auction)
@@ -146,7 +150,9 @@ class AuctionService:
             new_lot = AuctionItem(
                 auction_id=auction.id,
                 lot_status=LotStatus.PENDING,
-                **lot_dict
+                **lot_dict,
+                # SaaS FIX: Set UTC creation for lot
+                created_at=datetime.now(timezone.utc)
             )
             db.add(new_lot)
             db.flush()
@@ -258,7 +264,8 @@ class AuctionService:
 
         try:
             # REQUIREMENT: Combination of filename and timestamp separated by '___'
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            # SaaS FIX: Use UTC for unique document filename
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
             unique_filename = f"{document.filename}___{timestamp}"
 
             upload_res = upload_file_to_drive(
@@ -269,7 +276,8 @@ class AuctionService:
             file_url = upload_res.get('url')
             
             auction.auction_doc_url = file_url
-            auction.updated_at = datetime.now()
+            # SaaS FIX: Set UTC updated_at
+            auction.updated_at = datetime.now(timezone.utc)
             db.commit()
             return file_url
         except Exception as e:
@@ -324,7 +332,8 @@ class AuctionService:
         if terms_file:
             try:
                 # Combination of filename and timestamp separated by '___'
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                # SaaS FIX: Use UTC for unique terms filename
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
                 unique_filename = f"{terms_file.filename}___{timestamp}"
 
                 upload_res = upload_file_to_drive(
@@ -351,7 +360,8 @@ class AuctionService:
                 if lot_specific_files:
                     await AuctionService.save_lot_images(db, lot_id, lot_specific_files)
         
-        auction.updated_at = datetime.now()
+        # SaaS FIX: Use UTC updated_at
+        auction.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(auction)
         return auction
@@ -440,7 +450,8 @@ class AuctionService:
         if approve:
             auction.approval_status = ApprovalStatus.L1_APPROVED
             auction.publish_l1_approved_by = approver_id
-            auction.publish_l1_approved_at = datetime.now()
+            # SaaS FIX: Set UTC approval time
+            auction.publish_l1_approved_at = datetime.now(timezone.utc)
             auction.publish_l1_remarks = remarks
         else:
             auction.status = AuctionStatus.DRAFT
@@ -469,7 +480,8 @@ class AuctionService:
             auction.approval_status = ApprovalStatus.L2_APPROVED
             auction.status = AuctionStatus.SCHEDULED
             auction.publish_l2_approved_by = approver_id
-            auction.publish_l2_approved_at = datetime.now()
+            # SaaS FIX: Set UTC approval time
+            auction.publish_l2_approved_at = datetime.now(timezone.utc)
             auction.publish_l2_remarks = remarks
         else:
             auction.status = AuctionStatus.DRAFT
@@ -489,8 +501,9 @@ class AuctionService:
             raise AuctionNotApprovedException()
         
         auction.status = AuctionStatus.LIVE
-        auction.actual_start_time = datetime.now()
-        auction.published_at = datetime.now()
+        # SaaS FIX: Set UTC start/publish times
+        auction.actual_start_time = datetime.now(timezone.utc)
+        auction.published_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(auction)
@@ -512,7 +525,8 @@ class AuctionService:
         auction = AuctionService.get_by_id(db, auction_id)
         
         auction.status = AuctionStatus.CLOSED
-        auction.actual_end_time = datetime.now()
+        # SaaS FIX: Set UTC end time
+        auction.actual_end_time = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(auction)
@@ -527,7 +541,8 @@ class AuctionService:
         
         auction.status = AuctionStatus.CANCELLED
         auction.cancellation_reason = reason
-        auction.cancelled_at = datetime.now()
+        # SaaS FIX: Set UTC cancellation time
+        auction.cancelled_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(auction)
@@ -595,7 +610,8 @@ class AuctionService:
                 if "_file_" in original_name: original_name = original_name.split("_", 3)[-1]
 
                 # 2. Generate unique internal path for storage
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                # SaaS FIX: Use UTC for unique image filename timestamp
+                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
                 unique_storage_name = f"lot_{lot_id}_{timestamp}_{idx}"
 
                 # 3. Physical Upload
@@ -614,7 +630,9 @@ class AuctionService:
                     drive_file_id=drive_res.get('id'), # Unique Drive ID
                     file_size=size_in_bytes,
                     is_primary=1 if idx == 0 else 0,
-                    display_order=idx
+                    display_order=idx,
+                    # SaaS FIX: Set UTC creation for image record
+                    created_at=datetime.now(timezone.utc)
                 )
                 
                 db.add(new_image)
@@ -720,11 +738,13 @@ class AuctionService:
         lot.highest_bid_amount = amount
         lot.winner_user_id = user_id
         lot.total_bids_count += 1
-        lot.last_bid_time = datetime.now()
+        # SaaS FIX: Set UTC bid time
+        lot.last_bid_time = datetime.now(timezone.utc)
 
         # 4. ROBUST FEATURE: Auto-Extension (Popcorn Bidding)
         # If bid is within last 2 minutes, extend by 3 minutes
-        time_left = (lot.lot_end_time - datetime.now()).total_seconds()
+        # SaaS FIX: Use UTC-aware now for extension check
+        time_left = (lot.lot_end_time.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).total_seconds()
         if time_left < 120: 
             lot.lot_end_time = lot.lot_end_time + timedelta(minutes=3)
             lot.extension_count += 1
