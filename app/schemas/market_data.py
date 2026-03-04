@@ -1,6 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- LOCATION SCHEMAS ---
 class LocationBase(BaseModel):
@@ -19,6 +19,9 @@ class LocationCreate(LocationBase):
 class LocationResponse(LocationBase):
     id: int
     is_active: int
+    
+    # SaaS Standard: Include server_time for frontend synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # UPDATED for Pydantic V2
     model_config = ConfigDict(from_attributes=True)
@@ -66,6 +69,9 @@ class MarketPriceResponse(MarketPriceBase):
     category: Optional[CategorySimple]
     material: Optional[MaterialSimple]
     grade: Optional[GradeSimple]
+    
+    # SaaS Standard: Include server_time for price index synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # UPDATED for Pydantic V2
     model_config = ConfigDict(from_attributes=True)
