@@ -3,7 +3,7 @@ Commission Pydantic Schemas
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.utils.enums import CommissionType, RuleType
 
@@ -114,6 +114,9 @@ class CommissionRuleResponse(BaseModel):
     # Computed
     is_currently_effective: bool = False
     
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -123,6 +126,10 @@ class CommissionRuleListResponse(BaseModel):
     active_rules: int
     default_rule_id: Optional[int] = None
     rules: List[CommissionRuleResponse]
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -167,6 +174,9 @@ class CommissionResponse(BaseModel):
     is_collected: bool = False
     is_pending: bool = False
     
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -177,6 +187,10 @@ class CommissionListResponse(BaseModel):
     page_size: int
     total_pages: int
     commissions: List[CommissionResponse]
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -207,6 +221,9 @@ class CommissionCalculationResponse(BaseModel):
     
     # Rule applied
     rule_applied: Optional[CommissionRuleResponse] = None
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         json_schema_extra = {
@@ -251,6 +268,10 @@ class CommissionStatsResponse(BaseModel):
     total_transactions: int = 0
     pending_count: int = 0
     collected_count: int = 0
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -277,6 +298,10 @@ class CommissionAnalyticsResponse(BaseModel):
     
     # Top performers
     top_auctions_by_commission: List[dict]
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -305,6 +330,9 @@ class CommissionActionResponse(BaseModel):
     message: str
     commission_id: int
     new_status: str
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         json_schema_extra = {
