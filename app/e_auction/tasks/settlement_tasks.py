@@ -4,7 +4,7 @@ Auto-create settlements for won auctions
 Calculate commissions, taxes, and payouts
 """
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from decimal import Decimal
 import logging
@@ -91,7 +91,8 @@ async def create_settlements_for_auction(auction_id: int):
                     seller_payout_status="PENDING",
                     
                     # Payment due date (48 hours)
-                    payment_due_date=datetime.now() + timedelta(hours=48),
+                    # SaaS FIX: Calculate expiry using UTC now
+                    payment_due_date=datetime.now(timezone.utc) + timedelta(hours=48),
                     
                     # Invoice
                     invoice_number=generate_invoice_number(lot.id)
@@ -148,7 +149,9 @@ async def create_commission_records(db: Session, settlement: Settlement, commiss
                 gst_rate=Decimal(str(settings.GST_RATE_PERCENT)),
                 gst_amount=settlement.seller_gst_amount,
                 total_commission_with_tax=settlement.seller_total_commission,
-                status="PENDING"
+                status="PENDING",
+                # SaaS FIX: Set UTC creation timestamp
+                created_at=datetime.now(timezone.utc)
             )
             db.add(seller_commission)
         
@@ -166,7 +169,9 @@ async def create_commission_records(db: Session, settlement: Settlement, commiss
                 gst_rate=Decimal(str(settings.GST_RATE_PERCENT)),
                 gst_amount=settlement.buyer_gst_amount,
                 total_commission_with_tax=settlement.buyer_total_commission,
-                status="PENDING"
+                status="PENDING",
+                # SaaS FIX: Set UTC creation timestamp
+                created_at=datetime.now(timezone.utc)
             )
             db.add(buyer_commission)
         
@@ -185,7 +190,8 @@ async def process_pending_settlements():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for global processing
+        now = datetime.now(timezone.utc)
         
         # Find pending settlements
         pending_settlements = db.query(Settlement).filter(
@@ -197,8 +203,11 @@ async def process_pending_settlements():
         
         for settlement in pending_settlements:
             try:
+                # SaaS FIX: Ensure settlement.payment_due_date is aware
+                due_date_utc = settlement.payment_due_date.replace(tzinfo=timezone.utc) if settlement.payment_due_date and settlement.payment_due_date.tzinfo is None else settlement.payment_due_date
+
                 # Check if overdue
-                if settlement.payment_due_date and settlement.payment_due_date < now:
+                if due_date_utc and due_date_utc < now:
                     if not settlement.is_overdue:
                         logger.warning(f"⚠️ Settlement {settlement.id} is overdue")
                         overdue_count += 1
@@ -207,8 +216,8 @@ async def process_pending_settlements():
                         # TODO: Mark as overdue in system
                 
                 # Send reminder 24 hours before due
-                elif settlement.payment_due_date:
-                    hours_until_due = (settlement.payment_due_date - now).total_seconds() / 3600
+                elif due_date_utc:
+                    hours_until_due = (due_date_utc - now).total_seconds() / 3600
                     if 23 < hours_until_due < 25:  # Within 24-25 hours
                         # TODO: Send reminder
                         reminded_count += 1
@@ -242,7 +251,8 @@ async def mark_settlement_paid(settlement_id: int, payment_id: int):
         
         settlement.buyer_payment_status = "COMPLETED"
         settlement.buyer_payment_id = payment_id
-        settlement.buyer_payment_date = datetime.now()
+        # SaaS FIX: Set processed timestamp in UTC
+        settlement.buyer_payment_date = datetime.now(timezone.utc)
         
         db.commit()
         
@@ -281,6 +291,8 @@ async def process_seller_payout(settlement_id: int):
         # TODO: Transfer total_seller_receivable to seller's bank account
         
         settlement.seller_payout_status = "PROCESSING"
+        # SaaS FIX: Set updated timestamp in UTC
+        settlement.updated_at = datetime.now(timezone.utc)
         db.commit()
         
         logger.info(f"💸 Initiated payout for settlement {settlement_id}")
@@ -297,7 +309,8 @@ async def process_seller_payout(settlement_id: int):
 
 def generate_invoice_number(lot_id: int) -> str:
     """Generate unique invoice number"""
-    date_str = datetime.now().strftime("%Y%m%d")
+    # SaaS FIX: Use UTC for unique invoice timestamp
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"INV-{date_str}-{lot_id:06d}"
 
 
@@ -326,7 +339,9 @@ async def generate_settlement_report(auction_id: int) -> dict:
             "total_platform_revenue": float(total_platform_revenue),
             "pending_payments": pending_payments,
             "completed_payments": completed_payments,
-            "settlements": settlements
+            "settlements": settlements,
+            # SaaS FIX: Include report generation time in UTC
+            "generated_at": datetime.now(timezone.utc).isoformat()
         }
     
     except Exception as e:
