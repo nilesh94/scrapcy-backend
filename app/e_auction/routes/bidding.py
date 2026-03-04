@@ -6,6 +6,7 @@ All endpoints have RBAC placeholders (commented for testing)
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional, List
+from datetime import datetime, timezone
 
 from app.database.connection import get_db
 from app.e_auction.services import BiddingService
@@ -125,7 +126,9 @@ async def place_bid(
         bid_amount=bid.bid_amount,
         is_winning=bool(bid.is_winning_bid),
         previous_highest_bid=lot.highest_bid_amount if lot else None,
-        min_next_bid=lot.min_next_bid if lot else bid.bid_amount
+        min_next_bid=lot.min_next_bid if lot else bid.bid_amount,
+        # SaaS FIX: Include server_time in UTC for frontend timer sync
+        server_time=datetime.now(timezone.utc).isoformat()
     )
 
 
@@ -350,7 +353,9 @@ async def get_lot_bid_summary(
         user_has_bid=user_highest is not None,
         user_highest_bid=user_highest,
         user_is_winning=is_winning,
-        user_has_auto_bid=has_auto_bid
+        user_has_auto_bid=has_auto_bid,
+        # SaaS FIX: Include server_time in UTC for frontend timer sync
+        server_time=datetime.now(timezone.utc).isoformat()
     )
 
 
