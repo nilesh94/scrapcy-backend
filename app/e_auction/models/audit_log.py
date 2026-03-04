@@ -5,7 +5,7 @@ File: app/e_auction/models/audit_log.py
 from sqlalchemy import Column, Integer, String, CLOB, TIMESTAMP, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database.connection import Base
 
@@ -38,7 +38,8 @@ class AuditLog(Base):
     performed_by_name = Column("PERFORMED_BY_NAME", String(255))  # Cache name for faster display
     
     # When
-    timestamp = Column("TIMESTAMP", TIMESTAMP(6), default=datetime.now, nullable=False, index=True)
+    # SaaS FIX: Use timezone-aware UTC default for immutable audit tracking
+    timestamp = Column("TIMESTAMP", TIMESTAMP(6), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     
     # What changed (JSON format)
     changes = Column("CHANGES", CLOB)
