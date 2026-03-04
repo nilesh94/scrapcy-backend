@@ -5,7 +5,7 @@ Configured via ENV
 """
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.e_auction.models import Notification
 from app.e_auction.utils.enums import NotificationType, NotificationPriority
@@ -41,7 +41,9 @@ class NotificationService:
             send_email=send_email and settings.EMAIL_ENABLED,
             send_sms=send_sms and settings.SMS_ENABLED,
             send_push=True,
-            send_in_app=True
+            send_in_app=True,
+            # SaaS FIX: Use UTC for creation timestamp
+            created_at=datetime.now(timezone.utc)
         )
         
         db.add(notification)
@@ -58,13 +60,16 @@ class NotificationService:
     def mark_as_read(db: Session, notification_id: int, user_id: int) -> bool:
         """Mark notification as read"""
         notification = db.query(Notification).filter(
-            Notification.id == notification_id,
-            Notification.user_id == user_id
+            and_(
+                Notification.id == notification_id,
+                Notification.user_id == user_id
+            )
         ).first()
         
         if notification:
             notification.is_read = 1
-            notification.read_at = datetime.now()
+            # SaaS FIX: Use UTC for read timestamp
+            notification.read_at = datetime.now(timezone.utc)
             db.commit()
             return True
         return False
@@ -103,12 +108,15 @@ class CommissionService:
         from app.e_auction.models import CommissionRule
         from sqlalchemy import and_
         
+        # SaaS FIX: Use UTC for rule effectivity check
+        now = datetime.now(timezone.utc)
+        
         # Get applicable rule (highest priority first)
         rule = db.query(CommissionRule).filter(
             and_(
                 CommissionRule.is_active == 1,
-                CommissionRule.effective_from <= datetime.now(),
-                (CommissionRule.effective_until == None) | (CommissionRule.effective_until >= datetime.now())
+                CommissionRule.effective_from <= now,
+                (CommissionRule.effective_until == None) | (CommissionRule.effective_until >= now)
             )
         ).order_by(CommissionRule.priority.desc()).first()
         
@@ -159,7 +167,8 @@ class SchedulerService:
         from app.e_auction.models import Auction
         from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus
         
-        now = datetime.now()
+        # SaaS FIX: Use UTC for start time comparison
+        now = datetime.now(timezone.utc)
         
         auctions = db.query(Auction).filter(
             and_(
@@ -192,7 +201,8 @@ class SchedulerService:
         from app.e_auction.models import Auction
         from app.e_auction.utils.enums import AuctionStatus
         
-        now = datetime.now()
+        # SaaS FIX: Use UTC for end time comparison
+        now = datetime.now(timezone.utc)
         
         auctions = db.query(Auction).filter(
             and_(
