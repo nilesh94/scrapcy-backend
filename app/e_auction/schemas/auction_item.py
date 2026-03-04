@@ -4,7 +4,7 @@ Request and Response models for Lot endpoints
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.schemas.common import validate_positive_amount
 from app.e_auction.utils.enums import LotStatus, ScrapType, UnitType
@@ -261,6 +261,9 @@ class LotBasicResponse(BaseModel):
     current_price: Decimal
     is_live: bool = False
     
+    # SaaS Standard: UTC sync for list timers
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -362,6 +365,9 @@ class LotDetailResponse(BaseModel):
     reserve_met: bool = False
     can_accept_bids: bool = False
     
+    # SaaS Standard: UTC sync for countdown timers
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -372,6 +378,10 @@ class LotListResponse(BaseModel):
     page_size: int
     total_pages: int
     lots: List[LotBasicResponse]
+    
+    # SaaS Standard: UTC sync for the entire list
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
