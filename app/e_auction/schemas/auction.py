@@ -4,7 +4,7 @@ Request and Response models for Auction endpoints
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict # Updated imports
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.schemas.common import (
     AuditInfo, 
@@ -299,6 +299,9 @@ class AuctionDetailResponse(BaseModel):
     # Return created items in response
     items: Optional[List[LotDetailResponse]] = []
     
+    # SaaS FIX: Include server_time in UTC for frontend synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -309,6 +312,10 @@ class AuctionListResponse(BaseModel):
     page_size: int
     total_pages: int
     auctions: List[AuctionBasicResponse]
+    
+    # SaaS FIX: Include server_time in UTC for list views
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
