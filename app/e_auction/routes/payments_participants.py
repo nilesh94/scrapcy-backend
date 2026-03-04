@@ -5,6 +5,7 @@ All endpoints have RBAC placeholders (commented for testing)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from app.database.connection import get_db
 from app.e_auction.services import PaymentService
@@ -65,7 +66,9 @@ async def register_for_auction(
         auction_id=auction_id,
         user_id=user_id,
         agreed_to_terms=registration_data.agreed_to_terms,
-        participation_status="APPROVED"  # Auto-approved for now
+        participation_status="APPROVED",  # Auto-approved for now
+        # SaaS FIX: Explicit UTC registration timestamp
+        registered_at=datetime.now(timezone.utc)
     )
     
     db.add(participant)
@@ -98,7 +101,9 @@ async def register_for_auction(
         total_amount_due=total_due,
         payment_required=total_due > 0,
         payment_order_id=payment_response.payment_id if payment_response else None, # Changed order_id to payment_id based on schema
-        payment_url=payment_response.payment_url if payment_response else None
+        payment_url=payment_response.payment_url if payment_response else None,
+        # SaaS FIX: Include server_time in UTC
+        server_time=datetime.now(timezone.utc).isoformat()
     )
 
 
