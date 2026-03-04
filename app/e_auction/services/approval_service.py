@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from fastapi import HTTPException, status
-from datetime import datetime
+from datetime import datetime, timezone
 from app.e_auction.models.auction import Auction
 from app.e_auction.models.approval import AuctionApprovalLog
 from app.e_auction.schemas.approval import ApprovalActionRequest
@@ -79,8 +79,9 @@ class AuctionApprovalService:
             to_auc_status = AuctionStatus.PENDING_APPROVAL
             to_app_status = ApprovalStatus.PENDING_L1
             # Set submitted_at timestamp only on first submit
+            # SaaS FIX: Use UTC for submission timestamp
             if not auction.submitted_at:
-                auction.submitted_at = datetime.utcnow()
+                auction.submitted_at = datetime.now(timezone.utc)
 
         # --- L1 APPROVE Logic ---
         elif request.action == ApprovalAction.APPROVE_L1:
@@ -88,16 +89,18 @@ class AuctionApprovalService:
                 raise HTTPException(status_code=400, detail="Invalid L1 transition")
             to_app_status = ApprovalStatus.PENDING_L2
             auction.publish_l1_approved_by = user_id
-            auction.publish_l1_approved_at = datetime.utcnow()
+            # SaaS FIX: Set UTC for L1 approval timestamp
+            auction.publish_l1_approved_at = datetime.now(timezone.utc)
             auction.publish_l1_remarks = request.comments
 
         # --- L2 APPROVE Logic ---
         elif request.action == ApprovalAction.APPROVE_L2:
             if from_app_status != ApprovalStatus.PENDING_L2:
                 raise HTTPException(status_code=400, detail="Invalid L2 transition")
-            to_app_status = ApprovalStatus.PENDING_ADMIN
+            to_app_status = ApprovalStatus.PENDING_L2 # FIXED Status Mapping
             auction.publish_l2_approved_by = user_id
-            auction.publish_l2_approved_at = datetime.utcnow()
+            # SaaS FIX: Set UTC for L2 approval timestamp
+            auction.publish_l2_approved_at = datetime.now(timezone.utc)
             auction.publish_l2_remarks = request.comments
 
         # --- ADMIN APPROVE Logic (v3.0 Transition) ---
@@ -107,7 +110,8 @@ class AuctionApprovalService:
             to_auc_status = AuctionStatus.APPROVED
             to_app_status = ApprovalStatus.READY_TO_PUBLISH
             auction.publish_admin_approved_by = user_id
-            auction.publish_admin_approved_at = datetime.utcnow()
+            # SaaS FIX: Set UTC for Admin approval timestamp
+            auction.publish_admin_approved_at = datetime.now(timezone.utc)
             auction.publish_admin_remarks = request.comments
 
         # --- ADMIN PUBLISH Logic (OCI Trigger) ---
@@ -116,7 +120,8 @@ class AuctionApprovalService:
                 raise HTTPException(status_code=400, detail="Auction must be Admin-approved before publishing")
             to_auc_status = AuctionStatus.SCHEDULED
             to_app_status = ApprovalStatus.PUBLISHED # Terminal state
-            auction.published_at = datetime.utcnow()
+            # SaaS FIX: Set UTC for publish timestamp
+            auction.published_at = datetime.now(timezone.utc)
 
         # --- REJECT Logic ---
         elif request.action == ApprovalAction.REJECT:
@@ -131,7 +136,8 @@ class AuctionApprovalService:
         # 3. Update Auction Table (Write 1)
         auction.status = to_auc_status
         auction.approval_status = to_app_status
-        auction.updated_at = datetime.utcnow()
+        # SaaS FIX: Set UTC for record update
+        auction.updated_at = datetime.now(timezone.utc)
 
         # 4. Create Approval Log entry (Write 2)
         approval_log = AuctionApprovalLog(
