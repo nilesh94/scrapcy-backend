@@ -6,7 +6,7 @@ Uses APScheduler - lightweight and efficient
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 import logging
 
@@ -39,7 +39,8 @@ async def check_and_publish_auctions():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for publishing logic
+        now = datetime.now(timezone.utc)
         
         # Find auctions ready to publish
         auctions = db.query(Auction).filter(
@@ -65,12 +66,12 @@ async def check_and_publish_auctions():
                 
                 # TODO: Send notifications to registered participants
                 # NotificationService.create_notification(
-                #     db=db,
-                #     user_id=participant.user_id,
-                #     notification_type=NotificationType.AUCTION_STARTING,
-                #     title="Auction Started",
-                #     message=f"Auction '{auction.auction_title}' is now live!",
-                #     auction_id=auction.id
+                #      db=db,
+                #      user_id=participant.user_id,
+                #      notification_type=NotificationType.AUCTION_STARTING,
+                #      title="Auction Started",
+                #      message=f"Auction '{auction.auction_title}' is now live!",
+                #      auction_id=auction.id
                 # )
                 
             except Exception as e:
@@ -93,7 +94,8 @@ async def check_and_close_auctions():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for closing logic
+        now = datetime.now(timezone.utc)
         
         # Find auctions ready to close
         auctions = db.query(Auction).filter(
@@ -151,7 +153,8 @@ async def check_auction_extensions():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for polling extension logic
+        now = datetime.now(timezone.utc)
         
         # Find lots that might need extension
         lots = db.query(AuctionItem).join(Auction).filter(
@@ -168,16 +171,19 @@ async def check_auction_extensions():
                 if lot.last_bid_time:
                     auction = db.query(Auction).filter(Auction.id == lot.auction_id).first()
                     
-                    time_since_last_bid = (now - lot.last_bid_time).total_seconds()
-                    trigger_window = auction.extension_trigger_window_minutes * 60
+                    # SaaS FIX: Ensure naive last_bid_time is treated as UTC
+                    last_bid_utc = lot.last_bid_time.replace(tzinfo=timezone.utc) if lot.last_bid_time.tzinfo is None else lot.last_bid_time
+                    time_since_last_bid = (now - last_bid_utc).total_seconds()
+                    trigger_window = (auction.extension_trigger_window_minutes or 0) * 60
                     
-                    # If bid was placed in last N minutes before end
-                    time_until_end = (lot.lot_end_time - now).total_seconds()
+                    # SaaS FIX: Ensure naive lot_end_time is treated as UTC
+                    lot_end_utc = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time.tzinfo is None else lot.lot_end_time
+                    time_until_end = (lot_end_utc - now).total_seconds()
                     
                     if time_until_end > 0 and time_until_end < trigger_window and time_since_last_bid < trigger_window:
                         # Extend the auction
                         from datetime import timedelta
-                        lot.lot_end_time = lot.lot_end_time + timedelta(minutes=auction.extension_duration_minutes)
+                        lot.lot_end_time = lot_end_utc + timedelta(minutes=auction.extension_duration_minutes)
                         lot.extension_count = (lot.extension_count or 0) + 1
                         
                         db.commit()
@@ -228,7 +234,8 @@ async def process_pending_notifications():
                     pass
                 
                 # Mark as sent
-                notification.sent_at = datetime.now()
+                # SaaS FIX: Use UTC-aware timestamp for notification audit
+                notification.sent_at = datetime.now(timezone.utc)
                 db.commit()
                 sent_count += 1
                 
