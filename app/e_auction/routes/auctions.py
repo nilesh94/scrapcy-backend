@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status, File, Uplo
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database.connection import get_db
 from app.e_auction.services import AuctionService
@@ -737,5 +737,6 @@ async def get_participation_summary(
     return {
         "auction": auction,
         "participation": participation,
-        "server_time": datetime.utcnow()
+        # SaaS FIX: Use UTC Standard for server time sync
+        "server_time": datetime.now(timezone.utc).isoformat()
     }
