@@ -6,7 +6,7 @@ Optimized for performance - handles high-volume bidding
 from typing import List, Optional
 from sqlalchemy.orm import Session, noload
 from sqlalchemy import and_, func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from fastapi import HTTPException
 
@@ -49,7 +49,11 @@ class BiddingService:
         if not lot:
             raise LotNotFoundException(auction_item_id)
         
-        if not lot.is_live:
+        # SaaS FIX: Ensure lot_end_time comparison is UTC-aware to support global users
+        now_utc = datetime.now(timezone.utc)
+        lot_end_utc = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time and lot.lot_end_time.tzinfo is None else lot.lot_end_time
+
+        if not lot.lot_status == 'LIVE' or (lot_end_utc and now_utc > lot_end_utc):
             raise LotNotAvailableForBiddingException(lot.lot_status)
         
         # Get auction
@@ -112,7 +116,9 @@ class BiddingService:
             bid_type=BidType.MANUAL,
             bid_status=BidStatus.ACTIVE,
             ip_address=ip,
-            device_info=device
+            device_info=device,
+            # SAAS FIX: Store bid time in UTC for global audit trail
+            bid_time=datetime.now(timezone.utc)
         )
         
         db.add(bid)
@@ -136,7 +142,8 @@ class BiddingService:
         lot.highest_bid_amount = bid_amount
         lot.winner_user_id = user_id
         lot.total_bids_count = (lot.total_bids_count or 0) + 1
-        lot.last_bid_time = datetime.now() # ALIGNMENT: Track local time
+        # SAAS FIX: Track last bid time in UTC
+        lot.last_bid_time = datetime.now(timezone.utc)
 
         # Handle Auto-Extension and capture minutes for WebSocket broadcast
         extended_minutes = BiddingService._handle_auto_extension(lot)
@@ -144,6 +151,7 @@ class BiddingService:
         bid.extension_minutes = extended_minutes 
 
         db.commit()
+        # Ensure bid is refreshed before returning for WebSocket payloads
         db.refresh(bid)
         
         # NOTE: Real-time broadcast should be triggered from the caller/route
@@ -153,7 +161,7 @@ class BiddingService:
     def _handle_auto_extension(lot: AuctionItem) -> int:
         """
         Industrial Precision Anti-Sniping Logic.
-        Uses exact DB configuration. Returns 0 if not configured/enabled.
+        UTC-Aware to support Global SaaS robustness.
         """
         auction = lot.auction 
         
@@ -169,12 +177,14 @@ class BiddingService:
 
         # Only proceed if we have a valid duration configured
         if ext_mins > 0 and lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
-            now = datetime.now()
-            time_left = lot.lot_end_time - now
+            # SAAS FIX: Force UTC comparison to database timestamps
+            now = datetime.now(timezone.utc)
+            end_time = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time.tzinfo is None else lot.lot_end_time
+            time_left = end_time - now
             
             # If bid is within the configured sniping window
             if time_left <= timedelta(minutes=window_mins) and time_left > timedelta(0):
-                lot.lot_end_time = lot.lot_end_time + timedelta(minutes=ext_mins)
+                lot.lot_end_time = end_time + timedelta(minutes=ext_mins)
                 lot.extension_count = (lot.extension_count or 0) + 1
                 return ext_mins
         
