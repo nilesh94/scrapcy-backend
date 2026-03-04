@@ -40,7 +40,8 @@ class ScrapListing(Base):
     
     is_admin_entry = Column(Boolean, default=False)
     added_by = Column(String(50), default="admin")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # SaaS Standard: Using timezone-aware DateTime with high-precision timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.current_timestamp())
     
     # Relationships
     images = relationship("ScrapImage", back_populates="listing", cascade="all, delete-orphan")
@@ -64,6 +65,7 @@ class ScrapImage(Base):
     drive_file_id = Column(String(255), nullable=True)
     
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # SaaS Standard: Using timezone-aware DateTime with high-precision timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.current_timestamp())
     
     listing = relationship("ScrapListing", back_populates="images")
