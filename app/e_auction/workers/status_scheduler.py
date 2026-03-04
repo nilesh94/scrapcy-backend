@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.database.connection import SessionLocal
 from app.e_auction.models.auction import Auction
@@ -12,25 +12,28 @@ logger = logging.getLogger(__name__)
 
 async def auction_status_monitor():
     """
-    High-precision monitor for automated status transitions[cite: 233].
+    High-precision monitor for automated status transitions.
     """
     while True:
         db = SessionLocal()
         try:
-            # --- 1. GO LIVE LOGIC (SCHEDULED -> LIVE) [cite: 235-240] ---
+            # SaaS Standard: Current time in aware UTC for cross-regional synchronization
+            now = datetime.now(timezone.utc)
+
+            # --- 1. GO LIVE LOGIC (SCHEDULED -> LIVE) ---
             ready_to_live = db.query(Auction).filter(
                 Auction.status == AuctionStatus.SCHEDULED,
                 Auction.approval_status == ApprovalStatus.PUBLISHED,
-                Auction.scheduled_start_time <= datetime.utcnow()
+                Auction.scheduled_start_time <= now
             ).all()
 
             for auction in ready_to_live:
                 from_status = auction.status
-                auction.status = AuctionStatus.LIVE # [cite: 243]
-                auction.actual_start_time = datetime.utcnow() # [cite: 244]
-                auction.updated_at = datetime.utcnow() # [cite: 245]
+                auction.status = AuctionStatus.LIVE #
+                auction.actual_start_time = now #
+                auction.updated_at = now #
 
-                # Immutable Audit Log Entry [cite: 247-252]
+                # Immutable Audit Log Entry
                 db.add(AuctionApprovalLog(
                     auction_id=auction.id,
                     action_by=0, # System User
@@ -43,20 +46,20 @@ async def auction_status_monitor():
                 logger.info(f"🚀 Auction {auction.id} is now LIVE.")
                 await broadcast_auction_started(auction.id)
 
-            # --- 2. CLOSE LOGIC (LIVE -> CLOSED) [cite: 253-258] ---
+            # --- 2. CLOSE LOGIC (LIVE -> CLOSED) ---
             ready_to_close = db.query(Auction).filter(
                 Auction.status == AuctionStatus.LIVE,
                 Auction.approval_status == ApprovalStatus.PUBLISHED,
-                Auction.scheduled_end_time <= datetime.utcnow()
+                Auction.scheduled_end_time <= now
             ).all()
 
             for auction in ready_to_close:
                 from_status = auction.status
-                auction.status = AuctionStatus.CLOSED # [cite: 261]
-                auction.actual_end_time = datetime.utcnow() # [cite: 262]
-                auction.updated_at = datetime.utcnow() # [cite: 263]
+                auction.status = AuctionStatus.CLOSED #
+                auction.actual_end_time = now #
+                auction.updated_at = now #
 
-                # Immutable Audit Log Entry [cite: 265-270]
+                # Immutable Audit Log Entry
                 db.add(AuctionApprovalLog(
                     auction_id=auction.id,
                     action_by=0,
