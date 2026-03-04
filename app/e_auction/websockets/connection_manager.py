@@ -6,7 +6,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List, Set, Optional
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.e_auction.schemas.bid import BidUpdateMessage
 
@@ -164,9 +164,10 @@ class ConnectionManager:
         if lot_id not in self.active_connections:
             return
         
+        # SaaS FIX: Use UTC-aware timestamp for heartbeats
         heartbeat = {
             "type": "heartbeat",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         dead_connections = []
