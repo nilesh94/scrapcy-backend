@@ -3,7 +3,7 @@ Participant and Payment Pydantic Schemas
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.utils.enums import PaymentType, PaymentStatus, PaymentMethod
 
@@ -60,6 +60,9 @@ class ParticipantResponse(BaseModel):
     is_approved: bool = False
     can_bid: bool = False
     
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -69,6 +72,10 @@ class ParticipantListResponse(BaseModel):
     total_participants: int
     approved_participants: int
     participants: List[ParticipantResponse]
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -88,6 +95,9 @@ class RegistrationSuccessResponse(BaseModel):
     payment_required: bool = True
     payment_order_id: Optional[str] = None
     payment_url: Optional[str] = None
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         json_schema_extra = {
@@ -165,6 +175,9 @@ class PaymentInitiateResponse(BaseModel):
     # Expiry
     expires_at: datetime
     
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(
         json_schema_extra = {
             "example": {
@@ -192,6 +205,9 @@ class PaymentVerifyResponse(BaseModel):
     amount: Decimal
     payment_method: Optional[str] = None
     processed_at: Optional[datetime] = None
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         json_schema_extra = {
@@ -240,6 +256,9 @@ class PaymentResponse(BaseModel):
     is_pending: bool = False
     is_refunded: bool = False
     
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -250,6 +269,10 @@ class PaymentListResponse(BaseModel):
     page_size: int
     total_pages: int
     payments: List[PaymentResponse]
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -264,6 +287,10 @@ class PaymentHistoryResponse(BaseModel):
     failed_payments: int = 0
     
     payments: List[PaymentResponse]
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -292,6 +319,9 @@ class RefundResponse(BaseModel):
     refund_amount: Decimal
     refund_transaction_id: Optional[str] = None
     refund_status: str
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         json_schema_extra = {
@@ -328,6 +358,10 @@ class PaymentStatsResponse(BaseModel):
     pending_transactions: int = 0
     failed_transactions: int = 0
     refunded_transactions: int = 0
+    
+    # SaaS Standard: Server time in UTC
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
