@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import traceback 
+from datetime import datetime, timezone
 
 from app.database.connection import get_db
 from app.models.requirements import BuyerRequirement
@@ -107,6 +108,8 @@ def update_status(
 
     # Update Status (Soft Delete is just setting status='DELETED')
     req.status = status_update.status
+    # SaaS Standard: Set update timestamp in UTC
+    req.updated_at = datetime.now(timezone.utc)
     db.commit()
     
     return {"message": f"Status updated to {status_update.status}"}
