@@ -4,7 +4,7 @@ E-Auction Admin Routes
 from fastapi import APIRouter, Depends, HTTPException, Body, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 import logging
 
@@ -74,7 +74,9 @@ async def get_admin_stats(
             "total_bids": total_bids,
             "active_bidders": active_bidders,
             "total_revenue": float(total_revenue),
-            "avg_bid_value": float(avg_bid_value)
+            "avg_bid_value": float(avg_bid_value),
+            # SaaS Standard: Provide server time in UTC for UI sync
+            "server_time": datetime.now(timezone.utc).isoformat()
         }
     
     except Exception as e:
@@ -133,7 +135,9 @@ async def get_all_auctions_admin(
         "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size
+        "total_pages": (total + page_size - 1) // page_size,
+        # SaaS Standard: Provide server time in UTC for UI sync
+        "server_time": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -172,7 +176,8 @@ async def delete_auction(
         performed_by=current_user.id if hasattr(current_user, 'id') else current_user.get('id'),
         performed_by_name=current_user.name if hasattr(current_user, 'name') else f"User {current_user.get('id')}",
         reason=reason,
-        timestamp=datetime.now(),
+        # SaaS FIX: Use UTC Standard for audit logs
+        timestamp=datetime.now(timezone.utc),
         ip_address=request.client.host if request else None,
         user_agent=request.headers.get("user-agent") if request else None
     )
@@ -241,7 +246,8 @@ async def archive_auction(
             }
         },
         reason=reason,
-        timestamp=datetime.now(),
+        # SaaS FIX: Use UTC Standard for archive timestamp
+        timestamp=datetime.now(timezone.utc),
         ip_address=request.client.host if request else None,
         user_agent=request.headers.get("user-agent") if request else None
     )
@@ -249,7 +255,8 @@ async def archive_auction(
     
     # Update auction status
     auction.status = AuctionStatus.ARCHIVED
-    auction.updated_at = datetime.now()
+    # SaaS FIX: Use UTC Standard for update
+    auction.updated_at = datetime.now(timezone.utc)
     
     # TODO: Send notification
     # await send_notification(
@@ -303,7 +310,8 @@ async def restore_auction(
                 "new_value": AuctionStatus.DRAFT
             }
         },
-        timestamp=datetime.now(),
+        # SaaS FIX: Use UTC Standard for restoration timestamp
+        timestamp=datetime.now(timezone.utc),
         ip_address=request.client.host if request else None,
         user_agent=request.headers.get("user-agent") if request else None
     )
@@ -311,7 +319,8 @@ async def restore_auction(
     
     # Restore auction to DRAFT
     auction.status = AuctionStatus.DRAFT
-    auction.updated_at = datetime.now()
+    # SaaS FIX: Use UTC Standard for update
+    auction.updated_at = datetime.now(timezone.utc)
     
     db.commit()
     
@@ -374,7 +383,9 @@ async def get_pending_approvals(
         "items": auctions,
         "total": total,
         "page": page,
-        "page_size": page_size
+        "page_size": page_size,
+        # SaaS Standard: Provide server time in UTC for UI sync
+        "server_time": datetime.now(timezone.utc).isoformat()
     }
 
 
