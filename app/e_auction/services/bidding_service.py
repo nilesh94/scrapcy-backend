@@ -38,8 +38,14 @@ class BiddingService:
         - Bid amount is valid (based on engine type)
         - User is not the seller
         """
-        # Get lot with PESSIMISTIC LOCK. noload prevents ORA-02014 by removing joined-image subquery.
-        lot = db.query(AuctionItem).options(noload(AuctionItem.images)).with_for_update().filter(AuctionItem.id == auction_item_id).first()
+        # Get lot with PESSIMISTIC LOCK. 
+        # Use db.get with with_for_update to avoid ORA-02014 caused by FETCH FIRST subqueries.
+        lot = db.get(
+            AuctionItem, 
+            auction_item_id, 
+            with_for_update=True
+        )
+        
         if not lot:
             raise LotNotFoundException(auction_item_id)
         
