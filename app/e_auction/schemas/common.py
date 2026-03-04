@@ -4,7 +4,7 @@ Base models and shared schemas used across the application
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Any, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 
@@ -16,6 +16,8 @@ class ResponseBase(BaseModel):
     """Base response model"""
     success: bool = True
     message: Optional[str] = None
+    # SaaS Standard: Include server time in all basic responses
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -27,6 +29,8 @@ class PaginatedResponse(BaseModel):
     page_size: int
     total_pages: int
     data: List[dict]
+    # SaaS Standard: Include server time for pagination calibration
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -166,7 +170,8 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: str
     details: Optional[List[ErrorDetail]] = None
-    timestamp: datetime = Field(default_factory=datetime.now)
+    # SaaS Standard: Errors must also be UTC-aware for log matching
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ============================================================================
