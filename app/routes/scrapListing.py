@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 import uuid
 import io
+from datetime import datetime, timezone
 
 from app.database.connection import get_db
 from app.models.scrapListing import ScrapListing, ScrapImage
@@ -102,7 +103,9 @@ async def add_scrap_listing(
             quantity=quantity, unit=unit, monthly_capacity=monthly_capacity,
             price_per_unit=price_per_unit, price_unit=price_unit,
             address=address, pickup_conditions=pickup_conditions,
-            is_admin_entry=True
+            is_admin_entry=True,
+            # SaaS Standard: Force explicit UTC for creation
+            created_at=datetime.now(timezone.utc)
         )
         
         db.add(new_listing)
@@ -137,7 +140,9 @@ async def add_scrap_listing(
                 seller_email=email,
                 image_url=upload_result['url'], 
                 drive_file_id=upload_result['id'], 
-                is_active=True
+                is_active=True,
+                # SaaS Standard: Force explicit UTC for image audit logs
+                created_at=datetime.now(timezone.utc)
             )
             db.add(new_image)
             uploaded_image_urls.append(upload_result['url'])
