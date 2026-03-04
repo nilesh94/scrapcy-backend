@@ -5,6 +5,7 @@ from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, CLOB, ForeignK
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
+from datetime import datetime, timezone
 
 
 # ============================================================================
@@ -52,10 +53,15 @@ class CommissionRule(Base):
     @property
     def is_currently_effective(self) -> bool:
         """Check if rule is currently effective"""
-        now = func.current_timestamp()
-        if self.effective_from and self.effective_from > now:
+        # SaaS FIX: Use UTC Standard for boolean logic
+        now = datetime.now(timezone.utc)
+        
+        start = self.effective_from.replace(tzinfo=timezone.utc) if self.effective_from and self.effective_from.tzinfo is None else self.effective_from
+        end = self.effective_until.replace(tzinfo=timezone.utc) if self.effective_until and self.effective_until.tzinfo is None else self.effective_until
+
+        if start and start > now:
             return False
-        if self.effective_until and self.effective_until < now:
+        if end and end < now:
             return False
         return self.is_active == 1
 
@@ -197,6 +203,10 @@ class Settlement(Base):
     
     @property
     def is_overdue(self) -> bool:
+        """Check if payment is overdue based on UTC standard"""
         if not self.payment_due_date:
             return False
-        return self.payment_due_date < func.current_timestamp() and not self.is_buyer_payment_complete
+        # SaaS FIX: Standardize comparison to UTC aware objects
+        now = datetime.now(timezone.utc)
+        due_date = self.payment_due_date.replace(tzinfo=timezone.utc) if self.payment_due_date.tzinfo is None else self.payment_due_date
+        return due_date < now and not self.is_buyer_payment_complete
