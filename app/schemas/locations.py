@@ -1,6 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 class LocationBase(BaseModel):
     location_name: str
@@ -25,5 +25,8 @@ class LocationResponse(LocationBase):
     is_active: int
     created_at: Optional[datetime]
     
+    # SaaS Standard: Include server_time for frontend synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
     # UPDATED: Using Pydantic V2 model_config
     model_config = ConfigDict(from_attributes=True)
