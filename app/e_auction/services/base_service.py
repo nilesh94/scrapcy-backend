@@ -5,6 +5,7 @@ Provides common database session management and utilities
 from typing import Optional, List, Type, TypeVar, Generic
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
+from datetime import datetime, timezone
 from app.database.connection import get_db
 from app.e_auction.utils.exceptions import DatabaseException
 
@@ -66,6 +67,12 @@ class BaseService(Generic[ModelType]):
     def create(self, db: Session, obj_in: dict) -> ModelType:
         """Create new record"""
         try:
+            # SaaS FIX: Automatically inject UTC timestamps if fields exist in model
+            if hasattr(self.model, 'created_at') and 'created_at' not in obj_in:
+                obj_in['created_at'] = datetime.now(timezone.utc)
+            if hasattr(self.model, 'updated_at') and 'updated_at' not in obj_in:
+                obj_in['updated_at'] = datetime.now(timezone.utc)
+
             db_obj = self.model(**obj_in)
             db.add(db_obj)
             db.commit()
@@ -82,6 +89,10 @@ class BaseService(Generic[ModelType]):
                 if value is not None and hasattr(db_obj, field):
                     setattr(db_obj, field, value)
             
+            # SaaS FIX: Ensure updated_at is refreshed in UTC on every update
+            if hasattr(db_obj, 'updated_at'):
+                setattr(db_obj, 'updated_at', datetime.now(timezone.utc))
+
             db.commit()
             db.refresh(db_obj)
             return db_obj
