@@ -7,7 +7,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
 from app.e_auction.models.auction_item_images import AuctionItemImage
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class AuctionItem(Base):
@@ -161,5 +161,7 @@ class AuctionItem(Base):
     @property
     def can_accept_bids(self) -> bool:
         """Check if lot can accept new bids"""
-        # Use datetime.now() instead of func.current_timestamp() to return a valid boolean for Pydantic
-        return self.lot_status == "LIVE" and (self.lot_end_time > datetime.now() if self.lot_end_time else False)
+        # SaaS FIX: Use UTC Standard for boolean logic
+        now = datetime.now(timezone.utc)
+        end_time = self.lot_end_time.replace(tzinfo=timezone.utc) if self.lot_end_time and self.lot_end_time.tzinfo is None else self.lot_end_time
+        return self.lot_status == "LIVE" and (end_time > now if end_time else False)
