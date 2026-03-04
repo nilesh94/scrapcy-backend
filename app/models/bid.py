@@ -2,7 +2,7 @@
 Bidding Models: Bids and Bid Events
 Mapped to SCRAPCY_APP schema
 """
-from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, TIMESTAMP, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.connection import Base
@@ -17,7 +17,8 @@ class Bid(Base):
     auction_item_id = Column("AUCTION_ITEM_ID", Integer, ForeignKey("SCRAPCY_APP.AUCTION_ITEMS.ID"), nullable=False)
     user_id = Column("USER_ID", Integer, nullable=False)
     bid_amount = Column("BID_AMOUNT", Float, nullable=False)
-    bid_time = Column("BID_TIME", TIMESTAMP(6), server_default=func.current_timestamp())
+    # SaaS Standard: Using timezone-aware DateTime for global bid synchronization
+    bid_time = Column("BID_TIME", DateTime(timezone=True), server_default=func.current_timestamp())
     bid_type = Column("BID_TYPE", String(20))  # MANUAL, AUTO
     is_winning_bid = Column("IS_WINNING_BID", Integer, default=0)
     bid_status = Column("BID_STATUS", String(20)) # ACTIVE, OUTBID, CANCELLED
@@ -42,7 +43,8 @@ class BidEvent(Base):
     bid_amount = Column("BID_AMOUNT", Float, nullable=False)
     previous_highest_bid = Column("PREVIOUS_HIGHEST_BID", Float)
     response_time_ms = Column("RESPONSE_TIME_MS", Integer)
-    server_timestamp = Column("SERVER_TIMESTAMP", TIMESTAMP(6), server_default=func.current_timestamp())
+    # SaaS Standard: Ensure audit events are timestamped with global accuracy
+    server_timestamp = Column("SERVER_TIMESTAMP", DateTime(timezone=True), server_default=func.current_timestamp())
     is_auto_bid = Column("IS_AUTO_BID", Integer, default=0)
     auto_bid_id = Column("AUTO_BID_ID", Integer)
     ip_address = Column("IP_ADDRESS", String(50))
