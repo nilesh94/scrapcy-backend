@@ -3,7 +3,7 @@ Auction Background Tasks
 Auto-close, auto-publish, and extension handling
 """
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 import logging
 
@@ -22,7 +22,8 @@ async def publish_scheduled_auctions():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for global scheduling logic
+        now = datetime.now(timezone.utc)
         
         # Find auctions ready to publish
         auctions_to_publish = db.query(Auction).filter(
@@ -81,7 +82,8 @@ async def close_ended_auctions():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for closure logic
+        now = datetime.now(timezone.utc)
         
         # Find auctions to close
         auctions_to_close = db.query(Auction).filter(
@@ -148,7 +150,8 @@ async def process_auction_extensions():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware now for polling extension logic
+        now = datetime.now(timezone.utc)
         
         # Find lots that might need extension
         live_lots = db.query(AuctionItem).join(Auction).filter(
@@ -166,14 +169,18 @@ async def process_auction_extensions():
                     auction = db.query(Auction).filter(Auction.id == lot.auction_id).first()
                     
                     # Calculate time until lot ends
-                    time_until_end = (lot.lot_end_time - now).total_seconds()
+                    # SaaS FIX: Ensure lot_end_time is aware
+                    lot_end_utc = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time.tzinfo is None else lot.lot_end_time
+                    time_until_end = (lot_end_utc - now).total_seconds()
                     
                     # Calculate trigger window in seconds
-                    trigger_window = auction.extension_trigger_window_minutes * 60
+                    trigger_window = (auction.extension_trigger_window_minutes or 0) * 60
                     
                     # If lot is within trigger window and has recent bid
                     if 0 < time_until_end < trigger_window:
-                        time_since_last_bid = (now - lot.last_bid_time).total_seconds()
+                        # SaaS FIX: Ensure last_bid_time is aware
+                        last_bid_utc = lot.last_bid_time.replace(tzinfo=timezone.utc) if lot.last_bid_time.tzinfo is None else lot.last_bid_time
+                        time_since_last_bid = (now - last_bid_utc).total_seconds()
                         
                         # If bid was placed in trigger window, extend
                         if time_since_last_bid < trigger_window:
@@ -181,7 +188,7 @@ async def process_auction_extensions():
                             if lot.total_bids_count >= (auction.extension_min_total_bids or 1):
                                 # Extend the lot
                                 extension_minutes = auction.extension_duration_minutes
-                                lot.lot_end_time = lot.lot_end_time + timedelta(minutes=extension_minutes)
+                                lot.lot_end_time = lot_end_utc + timedelta(minutes=extension_minutes)
                                 lot.extension_count = (lot.extension_count or 0) + 1
                                 
                                 db.commit()
@@ -220,7 +227,8 @@ async def send_closing_warnings():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()
+        # SaaS FIX: Use UTC-aware warning window
+        now = datetime.now(timezone.utc)
         warning_window = now + timedelta(seconds=60)
         
         # Find lots closing soon
@@ -263,7 +271,8 @@ async def cleanup_expired_drafts():
     """
     db = SessionLocal()
     try:
-        cutoff_date = datetime.now() - timedelta(days=30)
+        # SaaS FIX: Use UTC-aware cutoff date
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
         
         # Find old draft auctions
         old_drafts = db.query(Auction).filter(
