@@ -28,7 +28,8 @@ class Location(Base):
     state_gst_code = Column("STATE_GST_CODE", String(2), nullable=True)
     search_aliases = Column("SEARCH_ALIASES", String(500), nullable=True)
     
-    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.now())
+    # SaaS Standard: UTC-aware creation tracking
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
 
     # Relationship
     prices = relationship("ScrapPriceHistory", back_populates="location")
@@ -52,9 +53,9 @@ class ScrapPriceHistory(Base):
     currency = Column("CURRENCY", String(10), default="INR")
     unit = Column("UNIT", String(20), default="MT")
     
-    # Matching TIMESTAMP(6)
-    recorded_at = Column("RECORDED_AT", DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.now())
+    # SaaS Standard: Ensuring price index history is recorded with UTC standard
+    recorded_at = Column("RECORDED_AT", DateTime(timezone=True), server_default=func.current_timestamp(), nullable=False)
+    created_at = Column("CREATED_AT", DateTime(timezone=True), server_default=func.current_timestamp())
 
     # Relationships
     location = relationship("Location", back_populates="prices")
