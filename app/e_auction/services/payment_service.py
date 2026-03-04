@@ -5,7 +5,7 @@ Supports: Razorpay (configured via ENV)
 """
 from typing import Optional
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import hmac
@@ -34,7 +34,8 @@ class PaymentService:
         Creates payment record and generates payment gateway link
         """
         # Generate unique order ID
-        order_id = f"ORD{datetime.now().strftime('%Y%m%d%H%M%S')}{user_id}"
+        # SaaS FIX: Use UTC for unique order ID timestamp
+        order_id = f"ORD{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{user_id}"
         
         # Create payment record
         payment = Payment(
@@ -45,7 +46,9 @@ class PaymentService:
             amount=amount,
             currency=settings.PAYMENT_CURRENCY,
             payment_status=PaymentStatus.PENDING,
-            transaction_id=order_id
+            transaction_id=order_id,
+            # SaaS FIX: Set UTC creation timestamp
+            created_at=datetime.now(timezone.utc)
         )
         
         db.add(payment)
@@ -92,7 +95,8 @@ class PaymentService:
             except Exception as e:
                 raise PaymentFailedException(f"Payment gateway error: {str(e)}")
         
-        expires_at = datetime.now() + timedelta(minutes=settings.PAYMENT_TIMEOUT_MINUTES)
+        # SaaS FIX: Calculate expiry using UTC now
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.PAYMENT_TIMEOUT_MINUTES)
         
         return PaymentInitiateResponse(
             success=True,
@@ -143,7 +147,8 @@ class PaymentService:
         
         # Mark as successful
         payment.payment_status = PaymentStatus.SUCCESS
-        payment.processed_at = datetime.now()
+        # SaaS FIX: Set processed timestamp in UTC
+        payment.processed_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(payment)
@@ -199,12 +204,14 @@ class PaymentService:
         refund_amt = refund_amount or payment.amount
         
         # Create refund (placeholder - actual gateway integration needed)
-        refund_txn_id = f"RFN{datetime.now().strftime('%Y%m%d%H%M%S')}{payment.id}"
+        # SaaS FIX: Use UTC for refund order ID timestamp
+        refund_txn_id = f"RFN{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{payment.id}"
         
         payment.refund_amount = refund_amt
         payment.refund_status = "PROCESSING"
         payment.refund_transaction_id = refund_txn_id
-        payment.refund_initiated_at = datetime.now()
+        # SaaS FIX: Set refund initiation timestamp in UTC
+        payment.refund_initiated_at = datetime.now(timezone.utc)
         payment.refund_reason = reason
         
         db.commit()
