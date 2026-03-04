@@ -4,7 +4,7 @@ Request and Response models for Bidding endpoints
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.utils.enums import BidStatus, BidType, AutoBidStatus
 
@@ -180,6 +180,9 @@ class BidSuccessResponse(BaseModel):
     # Next bid info
     min_next_bid: Decimal
     
+    # SaaS Standard: UTC sync for live console
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(
         json_schema_extra = {
             "example": {
@@ -317,6 +320,9 @@ class LotBidSummary(BaseModel):
     user_is_winning: bool = False
     user_has_auto_bid: bool = False
     
+    # SaaS Standard: UTC sync for lot overview
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -347,6 +353,9 @@ class BidUpdateMessage(BaseModel):
     # Winner info (anonymized)
     winning_user_id: Optional[int] = None  # Only sent to the winner
     is_current_user_winning: bool = False
+    
+    # SaaS Standard: Vital for WebSocket countdown synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         json_schema_extra = {
