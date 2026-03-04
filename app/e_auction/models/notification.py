@@ -4,6 +4,7 @@ Notification Model
 from sqlalchemy import Column, Integer, String, TIMESTAMP
 from sqlalchemy.sql import func
 from app.database.connection import Base
+from datetime import datetime, timezone
 
 
 class Notification(Base):
@@ -54,4 +55,5 @@ class Notification(Base):
     def mark_as_read(self):
         """Mark notification as read"""
         self.is_read = 1
-        self.read_at = func.current_timestamp()
+        # SaaS FIX: Use Python UTC now to ensure application-level consistency
+        self.read_at = datetime.now(timezone.utc)
