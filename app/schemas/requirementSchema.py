@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, field_validator, Field, ConfigDict
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Shared properties
 class RequirementBase(BaseModel):
@@ -45,6 +45,8 @@ class RequirementOut(RequirementBase):
     user_id: Optional[int]
     status: str
     created_at: datetime
+    # SaaS Standard: Include server_time for frontend synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # UPDATED: Removed 'class Config' and replaced with V2 standard model_config
     # (Though it inherits from RequirementBase, being explicit ensures the warning disappears)
