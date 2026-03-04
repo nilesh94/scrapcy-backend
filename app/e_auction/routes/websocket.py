@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database.connection import get_db
 from app.e_auction.websockets.connection_manager import connection_manager
@@ -88,13 +88,17 @@ async def websocket_lot_bids(
     
     # Send initial state
     try:
+        # SaaS FIX: Use UTC Standard for remaining time calculation
+        now_utc = datetime.now(timezone.utc)
+        lot_end_utc = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time and lot.lot_end_time.tzinfo is None else lot.lot_end_time
+        
         initial_state = BidUpdateMessage(
             event_type="CONNECTED",
             auction_item_id=lot_id,
             current_highest_bid=lot.highest_bid_amount or lot.starting_bid_amount,
             total_bids=lot.total_bids_count or 0,
             unique_bidders=lot.unique_bidders_count or 0,
-            time_remaining_seconds=int((lot.lot_end_time - datetime.now()).total_seconds()) if lot.lot_end_time else None,
+            time_remaining_seconds=int((lot_end_utc - now_utc).total_seconds()) if lot_end_utc else None,
             is_extended=False,
             extension_count=lot.extension_count or 0,
             is_current_user_winning=(lot.winner_user_id == user_id) if lot.winner_user_id else False
@@ -207,7 +211,10 @@ async def broadcast_bid_update(
         # Calculate time remaining
         time_remaining = None
         if lot.lot_end_time:
-            time_remaining = int((lot.lot_end_time - datetime.now()).total_seconds())
+            # SaaS FIX: Use UTC Standard for broadcast sync
+            now_utc = datetime.now(timezone.utc)
+            lot_end_utc = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time.tzinfo is None else lot.lot_end_time
+            time_remaining = int((lot_end_utc - now_utc).total_seconds())
             time_remaining = max(0, time_remaining)  # Don't show negative
         
         # Create update message
