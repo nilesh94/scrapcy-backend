@@ -1,4 +1,4 @@
-from datetime import datetime # Required for timestamp
+from datetime import datetime, timezone # Required for timestamp
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -91,7 +91,8 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
 
         # --- NEW: UPDATE LAST LOGIN TIME ---
         try:
-            user.last_login_at = datetime.now()
+            # SaaS Standard: Set last login using UTC timezone-aware object
+            user.last_login_at = datetime.now(timezone.utc)
             db.commit()
         except Exception as db_e:
             # If updating time fails, just log it but don't stop the login
