@@ -19,7 +19,8 @@ class AuctionItemImage(Base):
     file_size = Column(Integer)
     is_primary = Column(SmallInteger, default=0) # 1 for thumbnail, 0 for gallery
     display_order = Column(Integer, default=0)   # For manual sorting in UI
-    created_at = Column(DateTime, server_default=func.now())
+    # SaaS FIX: Use server_default with UTC timestamp to maintain global consistency
+    created_at = Column(DateTime, server_default=func.current_timestamp())
 
     # --- Define the relationship back to the Lot ---
     # This allows SQLAlchemy to associate these images with the AuctionItem model
