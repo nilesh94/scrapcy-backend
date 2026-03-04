@@ -3,7 +3,7 @@ Helper Functions
 Common utility functions used across the e-auction module
 """
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import re
 
@@ -16,7 +16,13 @@ def calculate_time_remaining(end_time: datetime) -> dict:
     if not end_time:
         return None
     
-    now = datetime.now()
+    # SaaS FIX: Use UTC-aware now for accurate global calculations
+    now = datetime.now(timezone.utc)
+    
+    # Ensure end_time is timezone-aware for comparison
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
     if end_time <= now:
         return {"days": 0, "hours": 0, "minutes": 0, "seconds": 0, "total_seconds": 0}
     
@@ -41,13 +47,15 @@ def format_currency(amount: Decimal, currency: str = "INR") -> str:
 
 def generate_invoice_number(settlement_id: int) -> str:
     """Generate unique invoice number"""
-    date_str = datetime.now().strftime("%Y%m%d")
+    # SaaS FIX: Use UTC for invoice date components
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"INV-{date_str}-{settlement_id:06d}"
 
 
 def generate_order_id(user_id: int, auction_id: int) -> str:
     """Generate unique order ID for payments"""
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    # SaaS FIX: Use UTC for unique order ID timestamp
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     return f"ORD-{auction_id}-{user_id}-{timestamp}"
 
 
