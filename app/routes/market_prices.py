@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List, Optional, Dict, Any, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 # UPDATE: Added Field for alias mapping
 from pydantic import BaseModel, field_validator, Field
 
@@ -164,12 +164,13 @@ def sync_google_sheet(rows: List[SheetRow], db: Session = Depends(get_db)):
             # Parse Timestamp
             dt_str = f"{row.Date} {row.Time_Slot}"
             try:
-                recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
+                # SaaS FIX: Force parsed sheet time to UTC
+                recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
             except ValueError:
                 try:
-                    recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    recorded_at = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                 except ValueError:
-                    recorded_at = datetime.now()
+                    recorded_at = datetime.now(timezone.utc)
 
             # --- C. UPSERT LOGIC ---
             # Check if this exact price record already exists
@@ -357,7 +358,9 @@ def search_price(
         "status": "success",
         "search_context": context_str,
         "count": len(results),
-        "data": results
+        "data": results,
+        # SaaS FIX: Include server time for frontend calibration
+        "server_time": datetime.now(timezone.utc).isoformat()
     }
 
 # --- Helper Function for Processing Records ---
@@ -430,7 +433,8 @@ def add_market_price(price_data: MarketPriceCreate, db: Session = Depends(get_db
         grade_id=price_data.grade_id,
         location_id=price_data.location_id,
         price_per_mt=price_data.price_per_mt,
-        recorded_at=price_data.recorded_at if price_data.recorded_at else func.now()
+        # SaaS FIX: Use UTC Standard for manual entries
+        recorded_at=price_data.recorded_at if price_data.recorded_at else datetime.now(timezone.utc)
     )
     try:
         db.add(new_price)
