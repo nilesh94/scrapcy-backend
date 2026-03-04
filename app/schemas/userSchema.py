@@ -1,8 +1,8 @@
 # File: app/schemas/userSchema.py
 
-from pydantic import BaseModel, EmailStr, ConfigDict 
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 1. Base Schema (Shared properties)
 class UserBase(BaseModel):
@@ -41,6 +41,9 @@ class UserLogin(BaseModel):
 class UserOut(UserBase):
     id: int
     created_at: datetime  # Includes timestamp
+    
+    # SaaS Standard: Include server_time for session and audit synchronization
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # UPDATED: Replaced legacy class Config with V2 model_config
     model_config = ConfigDict(from_attributes=True)
