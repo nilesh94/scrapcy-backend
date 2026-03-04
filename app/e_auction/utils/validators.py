@@ -2,7 +2,7 @@
 Custom Validators
 Validation functions for business logic
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -18,7 +18,14 @@ def validate_auction_dates(start_time: datetime, end_time: datetime) -> bool:
         return False
     
     # Start time must be in future
-    if start_time <= datetime.now():
+    # SaaS FIX: Use UTC-aware now for global future-date validation
+    now = datetime.now(timezone.utc)
+    
+    # Ensure start_time is timezone-aware for comparison
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+
+    if start_time <= now:
         return False
     
     return True
