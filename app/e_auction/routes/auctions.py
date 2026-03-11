@@ -735,8 +735,9 @@ async def get_participation_summary(
     ).first()
 
     return {
-        "auction": auction,
+        # SaaS Standard: Force UTC validation through Pydantic Response Model
+        "auction": AuctionDetailResponse.model_validate(auction) if auction else None,
         "participation": participation,
         # SaaS FIX: Use UTC Standard for server time sync
-        "server_time": datetime.now(timezone.utc).isoformat()
+        "server_time": datetime.now(timezone.utc)
     }
