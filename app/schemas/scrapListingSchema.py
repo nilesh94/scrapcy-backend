@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime, timezone
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 # --- HELPER SCHEMAS (FIXED: MATCH DB COLUMN NAMES) ---
 class CategoryOut(BaseModel):
@@ -38,7 +40,10 @@ class ScrapImageResponse(ScrapImageBase):
     scrap_listing_id: int
     created_at: Optional[datetime] = None 
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 # --- LISTING SCHEMAS ---
 class ScrapListingBase(BaseModel):
@@ -54,7 +59,7 @@ class ScrapListingBase(BaseModel):
     form_id: Optional[int] = None 
     grade_id: Optional[int] = None
 
-    scrap_type: str             
+    scrap_type: str               
     grade: Optional[str] = None 
     
     description: Optional[str] = None
@@ -85,7 +90,10 @@ class ScrapListingResponse(ScrapListingBase):
     # SaaS Standard: Include server_time for frontend synchronization
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 # =======================================================
 # NEW: HIERARCHY SCHEMAS (For Dropdown Menus)
@@ -124,4 +132,7 @@ class CategoryHierarchyResponse(BaseModel):
     # SaaS Standard: Include server_time for hierarchy synchronization
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
