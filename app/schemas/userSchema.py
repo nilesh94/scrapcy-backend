@@ -3,6 +3,8 @@
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Optional
 from datetime import datetime, timezone
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 # 1. Base Schema (Shared properties)
 class UserBase(BaseModel):
@@ -46,7 +48,10 @@ class UserOut(UserBase):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # UPDATED: Replaced legacy class Config with V2 model_config
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 # 5. Registration Response Schema (Token + User Object)
 class UserRegistrationResponse(BaseModel):
@@ -54,3 +59,7 @@ class UserRegistrationResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserOut
+
+    model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
