@@ -16,6 +16,8 @@ from app.e_auction.schemas.common import (
 from app.e_auction.utils.enums import AuctionStatus, ApprovalStatus, AuctionType
 # Import Lot schemas to allow nesting
 from app.e_auction.schemas.auction_item import LotCreateRequest, LotDetailResponse
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 
 # ============================================================================
@@ -221,7 +223,10 @@ class AuctionBasicResponse(BaseModel):
     created_at: datetime
     emd_paid: bool = False
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class AuctionDetailResponse(BaseModel):
@@ -302,7 +307,10 @@ class AuctionDetailResponse(BaseModel):
     # SaaS FIX: Include server_time in UTC for frontend synchronization
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class AuctionListResponse(BaseModel):
@@ -316,7 +324,10 @@ class AuctionListResponse(BaseModel):
     # SaaS FIX: Include server_time in UTC for list views
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class AuctionStatsResponse(BaseModel):
