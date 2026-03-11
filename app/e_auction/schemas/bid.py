@@ -195,7 +195,9 @@ class BidSuccessResponse(BaseModel):
     previous_highest_bid: Optional[Decimal] = None
     
     # Next bid info
-    min_next_bid: Decimal
+    # min_next_bid: Decimal
+    # Bidding info for UI calculation
+    min_increment_amount: Decimal
     
     # SaaS Standard: UTC sync for live console
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -210,7 +212,7 @@ class BidSuccessResponse(BaseModel):
                 "bid_amount": 26500.00,
                 "is_winning": True,
                 "previous_highest_bid": 26000.00,
-                "min_next_bid": 27000.00
+                "min_increment_amount": 500.00
             }
         }
     )
