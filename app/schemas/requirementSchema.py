@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr, field_validator, Field, ConfigDict
 from typing import Optional
 from datetime import datetime, timezone
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 # Shared properties
 class RequirementBase(BaseModel):
@@ -25,7 +27,11 @@ class RequirementBase(BaseModel):
     guest_gst: Optional[str] = Field(default=None, alias="guestGst")
 
     # Correct V2 Configuration
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    model_config = ConfigDict(
+        populate_by_name=True, 
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
     @field_validator('guest_email', 'guest_name', 'guest_phone', 'guest_company', 'guest_gst', 'note', mode='before')
     @classmethod
@@ -50,4 +56,8 @@ class RequirementOut(RequirementBase):
 
     # UPDATED: Removed 'class Config' and replaced with V2 standard model_config
     # (Though it inherits from RequirementBase, being explicit ensures the warning disappears)
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(
+        from_attributes=True, 
+        populate_by_name=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
