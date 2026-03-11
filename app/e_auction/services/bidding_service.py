@@ -154,6 +154,10 @@ class BiddingService:
         # Ensure bid is refreshed before returning for WebSocket payloads
         db.refresh(bid)
         
+        # SaaS FIX: Attach lot property to the bid object to fulfill schema requirement
+        # min_increment_amount is now required by the BidSuccessResponse schema
+        bid.min_increment_amount = lot.min_increment_amount
+
         # NOTE: Real-time broadcast should be triggered from the caller/route
         return bid
 
