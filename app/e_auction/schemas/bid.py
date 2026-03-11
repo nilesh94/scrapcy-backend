@@ -7,6 +7,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.utils.enums import BidStatus, BidType, AutoBidStatus
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 
 # ============================================================================
@@ -107,7 +109,10 @@ class BidResponse(BaseModel):
     ip_address: Optional[str] = None
     device_info: Optional[str] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class BidDetailResponse(BaseModel):
@@ -133,7 +138,10 @@ class BidDetailResponse(BaseModel):
     is_active: bool = False
     is_outbid: bool = False
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class BidHistoryResponse(BaseModel):
@@ -144,7 +152,10 @@ class BidHistoryResponse(BaseModel):
     unique_bidders: int
     highest_bid: Optional[Decimal] = None
     bids: List[BidResponse]
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class BidListResponse(BaseModel):
@@ -154,7 +165,10 @@ class BidListResponse(BaseModel):
     page_size: int
     total_pages: int
     bids: List[BidDetailResponse]
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class MyBidsResponse(BaseModel):
@@ -165,7 +179,10 @@ class MyBidsResponse(BaseModel):
     lost_bids: int = 0
     total_amount_bid: Decimal = Decimal('0.00')
     bids: List[BidDetailResponse]
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class BidSuccessResponse(BaseModel):
@@ -184,6 +201,7 @@ class BidSuccessResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -242,7 +260,10 @@ class AutoBidResponse(BaseModel):
     has_budget_remaining: bool = False
     budget_remaining: Optional[Decimal] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class AutoBidListResponse(BaseModel):
@@ -323,7 +344,10 @@ class LotBidSummary(BaseModel):
     # SaaS Standard: UTC sync for lot overview
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 # ============================================================================
@@ -358,6 +382,7 @@ class BidUpdateMessage(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "event_type": "BID_PLACED",
