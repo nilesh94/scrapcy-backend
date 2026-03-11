@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Any, Dict
 from datetime import datetime, timezone
 from decimal import Decimal
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 
 # ============================================================================
@@ -19,7 +21,10 @@ class ResponseBase(BaseModel):
     # SaaS Standard: Include server time in all basic responses
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class PaginatedResponse(BaseModel):
@@ -32,7 +37,10 @@ class PaginatedResponse(BaseModel):
     # SaaS Standard: Include server time for pagination calibration
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 # ============================================================================
@@ -111,7 +119,10 @@ class AuditInfo(BaseModel):
     updated_at: Optional[datetime] = None
     created_by: Optional[int] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 # ============================================================================
@@ -142,7 +153,10 @@ class FileUploadResponse(BaseModel):
     mime_type: str
     uploaded_at: datetime
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class ImageInfo(BaseModel):
@@ -173,6 +187,8 @@ class ErrorResponse(BaseModel):
     # SaaS Standard: Errors must also be UTC-aware for log matching
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    model_config = ConfigDict(json_encoders={datetime: datetime_to_utc_iso})
+
 
 # ============================================================================
 # APPROVAL WORKFLOW
@@ -184,7 +200,10 @@ class ApprovalInfo(BaseModel):
     approved_at: Optional[datetime] = None
     remarks: Optional[str] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class ApprovalRequest(BaseModel):
@@ -255,4 +274,4 @@ def validate_phone_number(v: Optional[str]) -> Optional[str]:
         import re
         if not re.match(r'^\+?[0-9]{10,15}$', v):
             raise ValueError("Invalid phone number format")
-    return v
+        return v
