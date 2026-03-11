@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.schemas.common import validate_positive_amount
 from app.e_auction.utils.enums import LotStatus, ScrapType, UnitType
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 
 # ============================================================================
@@ -264,7 +266,10 @@ class LotBasicResponse(BaseModel):
     # SaaS Standard: UTC sync for list timers
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class LotDetailResponse(BaseModel):
@@ -368,7 +373,10 @@ class LotDetailResponse(BaseModel):
     # SaaS Standard: UTC sync for countdown timers
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class LotListResponse(BaseModel):
@@ -382,7 +390,10 @@ class LotListResponse(BaseModel):
     # SaaS Standard: UTC sync for the entire list
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class LotStatsResponse(BaseModel):
