@@ -126,9 +126,10 @@ async def place_bid(
         bid_amount=bid.bid_amount,
         is_winning=bool(bid.is_winning_bid),
         previous_highest_bid=lot.highest_bid_amount if lot else None,
-        min_next_bid=lot.min_next_bid if lot else bid.bid_amount,
-        # SaaS FIX: Include server_time in UTC for frontend timer sync
-        server_time=datetime.now(timezone.utc).isoformat()
+        # SaaS FIX: Changed min_next_bid to min_increment_amount
+        min_increment_amount=lot.min_increment_amount if lot else Decimal('0.00'),
+        # SaaS Standard: Server time in UTC
+        server_time=datetime.now(timezone.utc)
     )
 
 
@@ -354,8 +355,8 @@ async def get_lot_bid_summary(
         user_highest_bid=user_highest,
         user_is_winning=is_winning,
         user_has_auto_bid=has_auto_bid,
-        # SaaS FIX: Include server_time in UTC for frontend timer sync
-        server_time=datetime.now(timezone.utc).isoformat()
+        # SaaS Standard: Server time in UTC
+        server_time=datetime.now(timezone.utc)
     )
 
 
