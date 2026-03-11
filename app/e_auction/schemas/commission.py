@@ -6,6 +6,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.utils.enums import CommissionType, RuleType
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 
 # ============================================================================
@@ -117,7 +119,10 @@ class CommissionRuleResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class CommissionRuleListResponse(BaseModel):
@@ -130,7 +135,10 @@ class CommissionRuleListResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 # ============================================================================
@@ -142,7 +150,7 @@ class CommissionResponse(BaseModel):
     id: int
     auction_id: int
     auction_item_id: int
-    settlement_id: Optional[int] = None
+     settlement_id: Optional[int] = None
     
     # Commission details
     commission_type: str
@@ -177,7 +185,10 @@ class CommissionResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class CommissionListResponse(BaseModel):
@@ -191,7 +202,10 @@ class CommissionListResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class CommissionCalculationResponse(BaseModel):
@@ -226,6 +240,7 @@ class CommissionCalculationResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "base_amount": 100000.00,
@@ -272,7 +287,10 @@ class CommissionStatsResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class CommissionByCategory(BaseModel):
@@ -302,7 +320,10 @@ class CommissionAnalyticsResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 # ============================================================================
@@ -335,6 +356,7 @@ class CommissionActionResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "success": True,
