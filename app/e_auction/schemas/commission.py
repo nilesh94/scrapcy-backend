@@ -150,7 +150,7 @@ class CommissionResponse(BaseModel):
     id: int
     auction_id: int
     auction_item_id: int
-     settlement_id: Optional[int] = None
+    settlement_id: Optional[int] = None
     
     # Commission details
     commission_type: str
