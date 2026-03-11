@@ -6,6 +6,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from app.e_auction.utils.enums import PaymentType, PaymentStatus, PaymentMethod
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 
 # ============================================================================
@@ -63,7 +65,10 @@ class ParticipantResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class ParticipantListResponse(BaseModel):
@@ -76,7 +81,10 @@ class ParticipantListResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class RegistrationSuccessResponse(BaseModel):
@@ -100,6 +108,7 @@ class RegistrationSuccessResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -179,6 +188,7 @@ class PaymentInitiateResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -210,6 +220,7 @@ class PaymentVerifyResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -259,7 +270,10 @@ class PaymentResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class PaymentListResponse(BaseModel):
@@ -273,7 +287,10 @@ class PaymentListResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class PaymentHistoryResponse(BaseModel):
@@ -291,7 +308,10 @@ class PaymentHistoryResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 class RefundRequest(BaseModel):
@@ -324,6 +344,7 @@ class RefundResponse(BaseModel):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
+        json_encoders={datetime: datetime_to_utc_iso},
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -362,7 +383,10 @@ class PaymentStatsResponse(BaseModel):
     # SaaS Standard: Server time in UTC
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
 
 
 # ============================================================================
