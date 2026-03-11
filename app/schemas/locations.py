@@ -1,6 +1,8 @@
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime, timezone
+# SaaS Standard: Import centralized UTC serializer
+from app.e_auction.utils.serialization import datetime_to_utc_iso
 
 class LocationBase(BaseModel):
     location_name: str
@@ -29,4 +31,7 @@ class LocationResponse(LocationBase):
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # UPDATED: Using Pydantic V2 model_config
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: datetime_to_utc_iso}
+    )
