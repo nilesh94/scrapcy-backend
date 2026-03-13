@@ -194,10 +194,12 @@ class BidSuccessResponse(BaseModel):
     is_winning: bool
     previous_highest_bid: Optional[Decimal] = None
     
-    # Next bid info
-    # min_next_bid: Decimal
     # Bidding info for UI calculation
     min_increment_amount: Decimal
+
+    # Optional cross-check fields for frontend
+    current_highest_bid: Optional[Decimal] = None
+    winning_user_id: Optional[int] = None
     
     # SaaS Standard: UTC sync for live console
     server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -358,8 +360,9 @@ class LotBidSummary(BaseModel):
 
 class BidUpdateMessage(BaseModel):
     """WebSocket message for real-time bid updates"""
-    event_type: str = "BID_PLACED"  # BID_PLACED, BID_OUTBID, AUCTION_EXTENDED, AUCTION_CLOSING
+    event_type: str = "BID_PLACED"  # INITIAL_STATE, BID_PLACED, BID_OUTBID, AUCTION_EXTENDED, AUCTION_CLOSING, AUCTION_CLOSED
     auction_item_id: int
+    lot_id: int
     
     # Bid info
     bid_id: Optional[int] = None
@@ -372,12 +375,14 @@ class BidUpdateMessage(BaseModel):
     unique_bidders: int
     
     # Timing
+    lot_end_time: Optional[datetime] = None
     time_remaining_seconds: Optional[int] = None
     is_extended: bool = False
     extension_count: int = 0
     
-    # Winner info (anonymized)
-    winning_user_id: Optional[int] = None  # Only sent to the winner
+    # Winner / bidder info
+    winning_user_id: Optional[int] = None
+    bidder_user_id: Optional[int] = None
     is_current_user_winning: bool = False
     
     # SaaS Standard: Vital for WebSocket countdown synchronization

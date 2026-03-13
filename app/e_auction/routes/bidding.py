@@ -128,6 +128,9 @@ async def place_bid(
         previous_highest_bid=lot.highest_bid_amount if lot else None,
         # SaaS FIX: Changed min_next_bid to min_increment_amount
         min_increment_amount=lot.min_increment_amount if lot else Decimal('0.00'),
+        # Optional cross-check fields for frontend
+        current_highest_bid=lot.highest_bid_amount if lot else None,
+        winning_user_id=lot.winner_user_id if lot else None,
         # SaaS Standard: Server time in UTC
         server_time=datetime.now(timezone.utc)
     )
