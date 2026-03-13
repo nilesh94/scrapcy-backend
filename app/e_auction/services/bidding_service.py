@@ -174,10 +174,10 @@ class BiddingService:
         if not enable_ext:
             return 0
 
-        # Pull exact configurations from DB
-        window_mins = auction.EXTENSION_TRIGGER_WINDOW_MINUTES or 0
-        ext_mins = auction.EXTENSION_DURATION_MINUTES or 0
-        min_bids = auction.EXTENSION_MIN_TOTAL_BIDS or 1
+        # Pull exact configurations from DB using SQLAlchemy attribute names
+        window_mins = getattr(auction, "extension_trigger_window_minutes", 0) or 0
+        ext_mins = getattr(auction, "extension_duration_minutes", 0) or 0
+        min_bids = getattr(auction, "extension_min_total_bids", 1) or 1
 
         # Only proceed if we have a valid duration configured
         if ext_mins > 0 and lot.lot_end_time and (lot.total_bids_count or 0) >= min_bids:
