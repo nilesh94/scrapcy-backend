@@ -41,8 +41,9 @@ async def broadcast_bid_placed(
             logger.error(f"Lot {lot_id} not found for bid broadcast")
             return
         
-        # Calculate time remaining
+        # Calculate time remaining and normalize lot end time to UTC
         time_remaining = None
+        lot_end_utc = None
         if lot.lot_end_time:
             # SaaS FIX: Use UTC-aware now for accurate global broadcast
             now_utc = datetime.now(timezone.utc)
@@ -50,19 +51,22 @@ async def broadcast_bid_placed(
             delta = lot_end_utc - now_utc
             time_remaining = max(0, int(delta.total_seconds()))
         
-        # Create update message
+        # Create update message aligned with frontend expectations
         update_message = BidUpdateMessage(
             event_type="BID_PLACED",
             auction_item_id=lot_id,
+            lot_id=lot_id,
             bid_id=bid_id,
             bid_amount=bid_amount,
-            current_highest_bid=bid_amount,
+            current_highest_bid=lot.highest_bid_amount or bid_amount,
             total_bids=total_bids,
             unique_bidders=unique_bidders,
+            lot_end_time=lot_end_utc,
             time_remaining_seconds=time_remaining,
             is_extended=False,
             extension_count=lot.extension_count or 0,
-            winning_user_id=None,  # Don't reveal until closed
+            winning_user_id=lot.winner_user_id,
+            bidder_user_id=bidder_user_id,
             is_current_user_winning=False  # Set per-user below
         )
         
@@ -109,6 +113,7 @@ async def broadcast_outbid(lot_id: int, outbid_user_id: int, new_highest_bid: fl
         
         # Calculate time remaining
         time_remaining = None
+        lot_end_utc = None
         if lot.lot_end_time:
             # SaaS FIX: Use UTC-aware now for accurate global broadcast
             now_utc = datetime.now(timezone.utc)
@@ -120,10 +125,13 @@ async def broadcast_outbid(lot_id: int, outbid_user_id: int, new_highest_bid: fl
         outbid_message = BidUpdateMessage(
             event_type="BID_OUTBID",
             auction_item_id=lot_id,
+            lot_id=lot_id,
             current_highest_bid=new_highest_bid,
             total_bids=lot.total_bids_count or 0,
             unique_bidders=lot.unique_bidders_count or 0,
+            lot_end_time=lot_end_utc,
             time_remaining_seconds=time_remaining,
+            winning_user_id=lot.winner_user_id,
             is_current_user_winning=False
         )
         
@@ -158,6 +166,7 @@ async def broadcast_extension(lot_id: int, extension_minutes: int):
         
         # Calculate new time remaining
         time_remaining = None
+        lot_end_utc = None
         if lot.lot_end_time:
             # SaaS FIX: Use UTC-aware now for accurate global broadcast
             now_utc = datetime.now(timezone.utc)
@@ -169,12 +178,15 @@ async def broadcast_extension(lot_id: int, extension_minutes: int):
         extension_message = BidUpdateMessage(
             event_type="AUCTION_EXTENDED",
             auction_item_id=lot_id,
+            lot_id=lot_id,
             current_highest_bid=lot.highest_bid_amount or lot.starting_bid_amount,
             total_bids=lot.total_bids_count or 0,
             unique_bidders=lot.unique_bidders_count or 0,
+            lot_end_time=lot_end_utc,
             time_remaining_seconds=time_remaining,
             is_extended=True,
-            extension_count=lot.extension_count or 0
+            extension_count=lot.extension_count or 0,
+            winning_user_id=lot.winner_user_id
         )
         
         # Broadcast to all watchers
@@ -206,6 +218,7 @@ async def broadcast_closing_warning(lot_id: int):
         
         # Calculate exact time remaining
         time_remaining = 60  # Default to 60 if can't calculate
+        lot_end_utc = None
         if lot.lot_end_time:
             # SaaS FIX: Use UTC-aware now for accurate global broadcast
             now_utc = datetime.now(timezone.utc)
@@ -217,10 +230,13 @@ async def broadcast_closing_warning(lot_id: int):
         warning_message = BidUpdateMessage(
             event_type="AUCTION_CLOSING",
             auction_item_id=lot_id,
+            lot_id=lot_id,
             current_highest_bid=lot.highest_bid_amount or lot.starting_bid_amount,
             total_bids=lot.total_bids_count or 0,
             unique_bidders=lot.unique_bidders_count or 0,
-            time_remaining_seconds=time_remaining
+            lot_end_time=lot_end_utc,
+            time_remaining_seconds=time_remaining,
+            winning_user_id=lot.winner_user_id
         )
         
         # Broadcast to all watchers
@@ -260,7 +276,8 @@ async def broadcast_auction_ended(lot_id: int, winner_user_id: Optional[int] = N
             "total_bids": lot.total_bids_count or 0,
             "unique_bidders": lot.unique_bidders_count or 0,
             "time_remaining_seconds": 0,
-            "winning_user_id": winner_user_id,  # Can reveal winner now
+            "winning_user_id": winner_user_id if winner_user_id is not None else lot.winner_user_id,
+            "lot_end_time": (lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time and lot.lot_end_time.tzinfo is None else lot.lot_end_time).isoformat() if lot.lot_end_time else None,
             # SaaS FIX: Use aware UTC now for terminal state
             "server_time": datetime.now(timezone.utc).isoformat()
         }
