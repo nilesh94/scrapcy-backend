@@ -5,6 +5,7 @@ All endpoints have RBAC placeholders (commented for testing)
 """
 from fastapi import APIRouter, Depends, Query, HTTPException, status, File, UploadFile, Form
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from typing import Optional, List
 import json
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from app.database.connection import get_db
 from app.e_auction.services import AuctionService
 from app.e_auction.schemas.auction import *
 from app.e_auction.schemas.auction_item import LotUpdateRequest, LotDetailResponse
-from app.e_auction.models import Auction, AuctionParticipant
+from app.e_auction.models import Auction, AuctionParticipant, Bid
 from app.e_auction.utils.exceptions import (
     AuctionNotFoundException,
     ForbiddenException,
@@ -729,14 +730,54 @@ async def get_participation_summary(
     auction = db.query(Auction).options(joinedload(Auction.items)).filter(Auction.id == auction_id).first()
     
     # 2. Check User Participation Status
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None) or current_user.get("id")
     participation = db.query(AuctionParticipant).filter(
         AuctionParticipant.auction_id == auction_id,
-        AuctionParticipant.user_id == current_user.id
+        AuctionParticipant.user_id == user_id
     ).first()
+
+    # 3. Compute last bid per lot for this user
+    auction_response = None
+    if auction:
+        # Build base response from ORM
+        auction_response = AuctionDetailResponse.model_validate(auction, from_attributes=True)
+
+        lot_ids = [lot.id for lot in auction.items] if auction.items else []
+        if lot_ids and user_id:
+            # Subquery to get latest bid time per lot for this user
+            subq = (
+                db.query(
+                    Bid.auction_item_id.label("lot_id"),
+                    func.max(Bid.bid_time).label("max_time")
+                )
+                .filter(
+                    Bid.auction_item_id.in_(lot_ids),
+                    Bid.user_id == user_id
+                )
+                .group_by(Bid.auction_item_id)
+                .subquery()
+            )
+
+            # Join back to bids to get the corresponding amounts
+            last_bids = (
+                db.query(Bid.auction_item_id, Bid.bid_amount)
+                .join(
+                    subq,
+                    (Bid.auction_item_id == subq.c.lot_id) & (Bid.bid_time == subq.c.max_time)
+                )
+                .all()
+            )
+
+            last_bid_map = {row.auction_item_id: row.bid_amount for row in last_bids}
+
+            # Inject last_user_bid_amount into each lot in the response
+            if auction_response.items:
+                for lot in auction_response.items:
+                    lot.last_user_bid_amount = last_bid_map.get(lot.id)
 
     return {
         # SaaS Standard: Force UTC validation through Pydantic Response Model
-        "auction": AuctionDetailResponse.model_validate(auction) if auction else None,
+        "auction": auction_response,
         "participation": participation,
         # SaaS FIX: Use UTC Standard for server time sync
         "server_time": datetime.now(timezone.utc)
