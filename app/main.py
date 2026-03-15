@@ -49,6 +49,8 @@ from app.e_auction.routes import lots
 from app.e_auction.routes import approval as approval_routes
 # Added bidding router for the live engine
 from app.e_auction.routes import bidding as bidding_routes
+# Added websocket router for real-time updates
+from app.e_auction.routes import websocket as websocket_routes
 
 # ============================================================================
 # SETUP LOGGING
@@ -146,6 +148,12 @@ app.include_router(
 # Added bidding router to process real-time bids
 app.include_router(
     bidding_routes.router
+)
+
+# 5. WebSocket Routes
+# Handles real-time bid updates and user notifications
+app.include_router(
+    websocket_routes.router
 )
 
 # ============================================================================

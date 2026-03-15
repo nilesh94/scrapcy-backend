@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/v1/e-auction/ws", tags=["WebSocket"])
 
 
 @router.websocket("/lots/{lot_id}/bids")
+@router.websocket("/lots/{lot_id}/bids/")
 async def websocket_lot_bids(
     websocket: WebSocket,
     lot_id: int,
@@ -179,6 +180,7 @@ async def websocket_lot_bids(
 
 
 @router.websocket("/notifications")
+@router.websocket("/notifications/")
 async def websocket_notifications(
     websocket: WebSocket,
     user_id: Optional[int] = Query(None, description="User ID (optional if token is provided)"),

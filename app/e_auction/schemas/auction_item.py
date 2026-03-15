@@ -325,7 +325,7 @@ class LotDetailResponse(BaseModel):
     extension_count: int = 0
     view_count: int = 0
     # Current user's last bid (computed per-request)
-    last_user_bid_amount: Optional[Decimal] = None
+    last_user_bid_amount: Optional[float] = None
     
     # Status
     lot_status: str
