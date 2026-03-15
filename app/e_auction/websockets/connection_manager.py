@@ -26,9 +26,20 @@ class ConnectionManager:
         # User to lots mapping: {user_id: {lot_ids}}
         self.user_lots: Dict[int, Set[int]] = {}
     
-    async def connect(self, websocket: WebSocket, lot_id: int, user_id: int):
-        """Accept and register a new WebSocket connection"""
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, lot_id: int, user_id: int, already_accepted: bool = False):
+        """
+        Accept and register a new WebSocket connection.
+        
+        Args:
+            websocket: The active WebSocket connection object.
+            lot_id: The ID of the auction lot the user is watching.
+            user_id: The ID of the authenticated user.
+            already_accepted: Boolean indicating if the handshake has already been accepted.
+                             Required for FastAPI to avoid 403 Forbidden handshake errors.
+        """
+        if not already_accepted:
+            # Complete the WebSocket handshake if not already done
+            await websocket.accept()
         
         # Initialize lot connections if not exists
         if lot_id not in self.active_connections:

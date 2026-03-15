@@ -64,17 +64,24 @@ async def websocket_lot_bids(
     - heartbeat: Keep-alive message
     """
     
+    # CRITICAL: Always accept connection first in FastAPI to avoid 403 handshake errors.
+    # If we perform logic before accept(), the handshake fails.
+    await websocket.accept()
+    
     # ==== RBAC: Authenticate User ====
     authenticated_user_id = user_id
     
     if token:
         try:
+            # Dynamically import to avoid circular dependencies
             from app.utils import userUtils as utils
             from app.models.users import User
             
+            # Verify JWT Token
             payload = utils.verify_token(token)
             if payload and payload.get("type") == "access":
                 email = payload.get("sub")
+                # Get numeric User ID from email
                 user = db.query(User.id).filter(User.email == email).first()
                 if user:
                     authenticated_user_id = user.id
@@ -93,18 +100,20 @@ async def websocket_lot_bids(
         await websocket.close(code=1008, reason="Authentication required (token or user_id)")
         return
 
-    # Verify lot exists
+    # Verify lot exists in database
     lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
     if not lot:
         await websocket.close(code=1008, reason="Lot not found")
         return
 
     # --- Eligibility & Status Validation - Start ---
+    # 1. Verify Auction is LIVE
     auction = db.query(Auction).filter(Auction.id == lot.auction_id).first()
     if not auction or auction.status != AuctionStatus.LIVE:
         await websocket.close(code=1008, reason="Auction is not LIVE")
         return
 
+    # 2. Verify User has paid EMD and is eligible to participate
     participation = db.query(AuctionParticipant).filter(
         AuctionParticipant.auction_id == lot.auction_id,
         AuctionParticipant.user_id == authenticated_user_id,
@@ -116,10 +125,10 @@ async def websocket_lot_bids(
         return
     # --- END ---
     
-    # Connect
-    await connection_manager.connect(websocket, lot_id, authenticated_user_id)
+    # Connect (register connection in manager)
+    await connection_manager.connect(websocket, lot_id, authenticated_user_id, already_accepted=True)
     
-    # Send initial state
+    # Send initial state to the newly connected client
     try:
         # SaaS FIX: Use UTC Standard for remaining time calculation
         now_utc = datetime.now(timezone.utc)
@@ -150,18 +159,17 @@ async def websocket_lot_bids(
         logger.error(f"Error sending initial state: {str(e)}")
     
     try:
-        # Keep connection alive and handle incoming messages
+        # Keep connection alive and handle incoming messages (e.g., heartbeats)
         while True:
-            # Wait for messages from client (if any)
-            # In this implementation, client sends heartbeat responses
+            # Wait for messages from client
             data = await websocket.receive_text()
             
-            # Process client messages (optional)
-            # For now, just echo back as heartbeat response
+            # Simple heartbeat mechanism
             if data == "ping":
                 await websocket.send_text("pong")
     
     except WebSocketDisconnect:
+        # Clean up connection on disconnect
         connection_manager.disconnect(websocket, lot_id, authenticated_user_id)
         logger.info(f"Client disconnected from lot {lot_id}")
     
@@ -202,6 +210,9 @@ async def websocket_notifications(
     - Auction starting soon
     """
     
+    # CRITICAL: Always accept connection first in FastAPI to avoid 403 handshake errors
+    await websocket.accept()
+    
     # ==== RBAC: Authenticate User ====
     authenticated_user_id = user_id
     
@@ -230,8 +241,6 @@ async def websocket_notifications(
     if not authenticated_user_id:
         await websocket.close(code=1008, reason="Authentication required (token or user_id)")
         return
-    
-    await websocket.accept()
     
     # Send welcome message
     await websocket.send_json({
