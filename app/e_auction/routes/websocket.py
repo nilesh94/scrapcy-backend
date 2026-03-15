@@ -25,15 +25,22 @@ router = APIRouter(prefix="/api/v1/e-auction/ws", tags=["WebSocket"])
 async def websocket_lot_bids(
     websocket: WebSocket,
     lot_id: int,
-    user_id: int = Query(..., description="User ID for authentication"),
+    user_id: Optional[int] = Query(None, description="User ID (optional if token is provided)"),
+    token: Optional[str] = Query(None, description="JWT Access Token for authentication"),
     db: Session = Depends(get_db)
 ):
     """
     WebSocket endpoint for real-time bid updates on a specific lot
     
-    Usage from frontend:
+    Authentication:
+    Backend expects the JWT access token in the query parameter 'token'.
+    Alternatively, for testing, 'user_id' can be passed directly.
+    
+    Usage from frontend (Example):
     ```javascript
-    const ws = new WebSocket('ws://localhost:8000/api/v1/e-auction/ws/lots/123/bids?user_id=1');
+    const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+    const lotId = 66100701; // Replace with dynamic lot ID from your logic
+    const ws = new WebSocket(`ws://localhost:8000/api/v1/e-auction/ws/lots/${lotId}/bids?token=${token}`);
     
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -57,9 +64,35 @@ async def websocket_lot_bids(
     - heartbeat: Keep-alive message
     """
     
-    # ==== RBAC: In production, verify user_id from JWT ====
-    # For now, using query param for testing
+    # ==== RBAC: Authenticate User ====
+    authenticated_user_id = user_id
     
+    if token:
+        try:
+            from app.utils import userUtils as utils
+            from app.models.users import User
+            
+            payload = utils.verify_token(token)
+            if payload and payload.get("type") == "access":
+                email = payload.get("sub")
+                user = db.query(User.id).filter(User.email == email).first()
+                if user:
+                    authenticated_user_id = user.id
+                else:
+                    await websocket.close(code=1008, reason="User not found for token")
+                    return
+            else:
+                await websocket.close(code=1008, reason="Invalid or expired token")
+                return
+        except Exception as e:
+            logger.error(f"WS Auth Error: {str(e)}")
+            await websocket.close(code=1008, reason="Authentication failed")
+            return
+            
+    if not authenticated_user_id:
+        await websocket.close(code=1008, reason="Authentication required (token or user_id)")
+        return
+
     # Verify lot exists
     lot = db.query(AuctionItem).filter(AuctionItem.id == lot_id).first()
     if not lot:
@@ -74,7 +107,7 @@ async def websocket_lot_bids(
 
     participation = db.query(AuctionParticipant).filter(
         AuctionParticipant.auction_id == lot.auction_id,
-        AuctionParticipant.user_id == user_id,
+        AuctionParticipant.user_id == authenticated_user_id,
         AuctionParticipant.payment_status == 'SUCCESS'
     ).first()
 
@@ -84,7 +117,7 @@ async def websocket_lot_bids(
     # --- END ---
     
     # Connect
-    await connection_manager.connect(websocket, lot_id, user_id)
+    await connection_manager.connect(websocket, lot_id, authenticated_user_id)
     
     # Send initial state
     try:
@@ -104,7 +137,7 @@ async def websocket_lot_bids(
             is_extended=False,
             extension_count=lot.extension_count or 0,
             winning_user_id=lot.winner_user_id,
-            is_current_user_winning=(lot.winner_user_id == user_id) if lot.winner_user_id else False
+            is_current_user_winning=(lot.winner_user_id == authenticated_user_id) if lot.winner_user_id else False
         )
         
         # FIXED: Using model_dump() instead of dict() for Pydantic V2 compatibility
@@ -129,25 +162,32 @@ async def websocket_lot_bids(
                 await websocket.send_text("pong")
     
     except WebSocketDisconnect:
-        connection_manager.disconnect(websocket, lot_id, user_id)
+        connection_manager.disconnect(websocket, lot_id, authenticated_user_id)
         logger.info(f"Client disconnected from lot {lot_id}")
     
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")
-        connection_manager.disconnect(websocket, lot_id, user_id)
+        connection_manager.disconnect(websocket, lot_id, authenticated_user_id)
 
 
 @router.websocket("/notifications")
 async def websocket_notifications(
     websocket: WebSocket,
-    user_id: int = Query(..., description="User ID for authentication")
+    user_id: Optional[int] = Query(None, description="User ID (optional if token is provided)"),
+    token: Optional[str] = Query(None, description="JWT Access Token for authentication"),
+    db: Session = Depends(get_db)
 ):
     """
     WebSocket endpoint for real-time user notifications
     
+    Authentication:
+    Backend expects the JWT access token in the query parameter 'token'.
+    Alternatively, for testing, 'user_id' can be passed directly.
+    
     Usage:
     ```javascript
-    const ws = new WebSocket('ws://localhost:8000/api/v1/e-auction/ws/notifications?user_id=1');
+    const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+    const ws = new WebSocket(`ws://localhost:8000/api/v1/e-auction/ws/notifications?token=${token}`);
     
     ws.onmessage = (event) => {
         const notification = JSON.parse(event.data);
@@ -162,14 +202,41 @@ async def websocket_notifications(
     - Auction starting soon
     """
     
-    # ==== RBAC: In production, verify user_id from JWT ====
+    # ==== RBAC: Authenticate User ====
+    authenticated_user_id = user_id
+    
+    if token:
+        try:
+            from app.utils import userUtils as utils
+            from app.models.users import User
+            
+            payload = utils.verify_token(token)
+            if payload and payload.get("type") == "access":
+                email = payload.get("sub")
+                user = db.query(User.id).filter(User.email == email).first()
+                if user:
+                    authenticated_user_id = user.id
+                else:
+                    await websocket.close(code=1008, reason="User not found for token")
+                    return
+            else:
+                await websocket.close(code=1008, reason="Invalid or expired token")
+                return
+        except Exception as e:
+            logger.error(f"WS Auth Error: {str(e)}")
+            await websocket.close(code=1008, reason="Authentication failed")
+            return
+            
+    if not authenticated_user_id:
+        await websocket.close(code=1008, reason="Authentication required (token or user_id)")
+        return
     
     await websocket.accept()
     
     # Send welcome message
     await websocket.send_json({
         "type": "connected",
-        "user_id": user_id,
+        "user_id": authenticated_user_id,
         "message": "Connected to notifications"
     })
     
@@ -183,10 +250,11 @@ async def websocket_notifications(
                 await websocket.send_text("pong")
     
     except WebSocketDisconnect:
-        logger.info(f"Notification websocket disconnected for user {user_id}")
+        logger.info(f"Notification websocket disconnected for user {authenticated_user_id}")
     
     except Exception as e:
         logger.error(f"Notification WebSocket error: {str(e)}")
+
 
 
 # Helper function to broadcast bid updates (called from bidding service)
