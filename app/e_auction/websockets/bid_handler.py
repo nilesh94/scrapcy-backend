@@ -82,10 +82,10 @@ async def broadcast_bid_placed(
         bidder_message = update_message.model_copy()
         bidder_message.is_current_user_winning = True
         
-        # UPDATED: model_dump() for Pydantic V2
+        # UPDATED: model_dump(mode='json') for Pydantic V2 to ensure JSON compatibility
         await connection_manager.broadcast_to_user(
             user_id=bidder_user_id,
-            message=bidder_message.model_dump()
+            message=bidder_message.model_dump(mode='json')
         )
         
         logger.info(f"📢 Broadcasted bid update for lot {lot_id}: {bid_amount}")
@@ -136,10 +136,10 @@ async def broadcast_outbid(lot_id: int, outbid_user_id: int, new_highest_bid: fl
         )
         
         # Send only to outbid user
-        # UPDATED: model_dump() for Pydantic V2
+        # UPDATED: model_dump(mode='json') for Pydantic V2 to ensure JSON compatibility
         await connection_manager.broadcast_to_user(
             user_id=outbid_user_id,
-            message=outbid_message.model_dump()
+            message=outbid_message.model_dump(mode='json')
         )
         
         logger.info(f"🔔 Sent outbid notification to user {outbid_user_id} for lot {lot_id}")

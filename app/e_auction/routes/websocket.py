@@ -150,9 +150,9 @@ async def websocket_lot_bids(
             is_current_user_winning=(lot.winner_user_id == authenticated_user_id) if lot.winner_user_id else False
         )
         
-        # FIXED: Using model_dump() instead of dict() for Pydantic V2 compatibility
+        # FIXED: Using model_dump(mode='json') to ensure Decimal objects are serialized to float/string
         await connection_manager.send_personal_message(
-            initial_state.model_dump(),
+            initial_state.model_dump(mode='json'),
             websocket
         )
     

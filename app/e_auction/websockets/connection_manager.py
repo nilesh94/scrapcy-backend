@@ -107,8 +107,8 @@ class ConnectionManager:
         if lot_id not in self.active_connections:
             return
         
-        # UPDATED: model_dump() for Pydantic V2
-        message_dict = message.model_dump()
+        # UPDATED: model_dump(mode='json') for Pydantic V2 to ensure JSON compatibility (e.g. Decimal -> float)
+        message_dict = message.model_dump(mode='json')
         dead_connections = []
         
         # Iterate over a copy of the dictionary items to avoid RuntimeError during cleanup
