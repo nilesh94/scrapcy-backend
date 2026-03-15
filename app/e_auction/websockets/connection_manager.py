@@ -190,8 +190,10 @@ class ConnectionManager:
             return
         
         # SaaS FIX: Use UTC-aware timestamp for heartbeats
+        # This allows the client to calculate their local time offset from the server
         heartbeat = {
             "type": "heartbeat",
+            "server_time_utc": datetime.now(timezone.utc).isoformat(),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         

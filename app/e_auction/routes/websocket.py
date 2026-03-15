@@ -137,7 +137,8 @@ async def websocket_lot_bids(
     
     # Send initial state to the newly connected client
     try:
-        # SaaS FIX: Use UTC Standard for remaining time calculation
+        # SaaS FIX: Provide UTC ISO string for client-side local time conversion
+        # Use UTC Standard for remaining time calculation
         now_utc = datetime.now(timezone.utc)
         lot_end_utc = lot.lot_end_time.replace(tzinfo=timezone.utc) if lot.lot_end_time and lot.lot_end_time.tzinfo is None else lot.lot_end_time
         
@@ -148,7 +149,7 @@ async def websocket_lot_bids(
             current_highest_bid=lot.highest_bid_amount or lot.starting_bid_amount,
             total_bids=lot.total_bids_count or 0,
             unique_bidders=lot.unique_bidders_count or 0,
-            lot_end_time=lot_end_utc,
+            lot_end_time=lot_end_utc, # This will be ISO UTC string
             time_remaining_seconds=int((lot_end_utc - now_utc).total_seconds()) if lot_end_utc else None,
             is_extended=False,
             extension_count=lot.extension_count or 0,
@@ -157,6 +158,7 @@ async def websocket_lot_bids(
         )
         
         # FIXED: Using model_dump(mode='json') to ensure Decimal objects are serialized to float/string
+        # and datetime is ISO formatted
         await connection_manager.send_personal_message(
             initial_state.model_dump(mode='json'),
             websocket
