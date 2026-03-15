@@ -127,7 +127,13 @@ async def websocket_lot_bids(
     # --- END ---
     
     # Connect (register connection in manager)
-    await connection_manager.connect(websocket, lot_id, authenticated_user_id, already_accepted=True)
+    await connection_manager.connect(
+        websocket, 
+        lot_id, 
+        authenticated_user_id, 
+        auction_id=lot.auction_id,
+        already_accepted=True
+    )
     
     # Send initial state to the newly connected client
     try:

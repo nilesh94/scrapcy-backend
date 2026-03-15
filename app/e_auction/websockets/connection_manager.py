@@ -20,13 +20,14 @@ class ConnectionManager:
     """
     
     def __init__(self):
-        # Active connections: {lot_id: {user_id: [websocket, websocket]}}
+        # Store connections: {lot_id: {user_id: [websocket, ...]}}
         self.active_connections: Dict[int, Dict[int, List[WebSocket]]] = {}
-        
-        # User to lots mapping: {user_id: {lot_ids}}
+        # Track which lots a user is watching: {user_id: {lot_id, ...}}
         self.user_lots: Dict[int, Set[int]] = {}
+        # Mapping lot_id to auction_id for targeted auction broadcasts: {lot_id: auction_id}
+        self.lot_to_auction: Dict[int, int] = {}
     
-    async def connect(self, websocket: WebSocket, lot_id: int, user_id: int, already_accepted: bool = False):
+    async def connect(self, websocket: WebSocket, lot_id: int, user_id: int, auction_id: Optional[int] = None, already_accepted: bool = False):
         """
         Accept and register a new WebSocket connection.
         
@@ -34,6 +35,7 @@ class ConnectionManager:
             websocket: The active WebSocket connection object.
             lot_id: The ID of the auction lot the user is watching.
             user_id: The ID of the authenticated user.
+            auction_id: The ID of the auction this lot belongs to.
             already_accepted: Boolean indicating if the handshake has already been accepted.
                              Required for FastAPI to avoid 403 Forbidden handshake errors.
         """
@@ -41,11 +43,14 @@ class ConnectionManager:
             # Complete the WebSocket handshake if not already done
             await websocket.accept()
         
-        # Initialize lot connections if not exists
+        # Register the lot's auction if provided
+        if auction_id is not None:
+            self.lot_to_auction[lot_id] = auction_id
+        
+        # Initialize connection structures for this lot
         if lot_id not in self.active_connections:
             self.active_connections[lot_id] = {}
         
-        # Initialize user connections for this lot
         if user_id not in self.active_connections[lot_id]:
             self.active_connections[lot_id][user_id] = []
         
@@ -57,7 +62,7 @@ class ConnectionManager:
             self.user_lots[user_id] = set()
         self.user_lots[user_id].add(lot_id)
         
-        logger.info(f"✅ WebSocket connected: user={user_id}, lot={lot_id}")
+        logger.info(f"✅ WebSocket connected: user={user_id}, lot={lot_id}, auction={auction_id}")
         logger.info(f"📊 Active connections for lot {lot_id}: {len(self.active_connections[lot_id])}")
     
     def disconnect(self, websocket: WebSocket, lot_id: int, user_id: int):
@@ -133,9 +138,13 @@ class ConnectionManager:
         Broadcast message to all users watching any lot in a specific auction.
         Used for operational status changes like AUCTION_LIVE or AUCTION_CLOSED.
         """
-        # Iterate over all currently active lots and broadcast the message
-        # In this implementation, we broadcast to all active lots being tracked
-        for lot_id in list(self.active_connections.keys()):
+        # Find all lots that belong to this specific auction
+        target_lot_ids = [
+            lot_id for lot_id, aid in self.lot_to_auction.items()
+            if aid == auction_id and lot_id in self.active_connections
+        ]
+        
+        for lot_id in target_lot_ids:
             dead_connections = []
             for user_id, connections in list(self.active_connections[lot_id].items()):
                 for websocket in connections:
@@ -149,26 +158,31 @@ class ConnectionManager:
             for lid, uid, ws in dead_connections:
                 self.disconnect(ws, lid, uid)
     
-    async def broadcast_to_user(self, user_id: int, message: dict):
-        """Send message to all connections of a specific user"""
+    async def broadcast_to_user(self, user_id: int, message: dict, lot_id: Optional[int] = None):
+        """
+        Send message to all connections of a specific user.
+        If lot_id is provided, only sends to that specific lot's connection.
+        """
         if user_id not in self.user_lots:
             return
         
         dead_connections = []
         
-        # Iterate over a copy of the set to avoid modification errors
-        for lot_id in list(self.user_lots[user_id]):
-            if lot_id in self.active_connections and user_id in self.active_connections[lot_id]:
-                for websocket in self.active_connections[lot_id][user_id]:
+        # If lot_id is provided, only target that lot. Otherwise, target all lots the user is watching.
+        target_lot_ids = [lot_id] if lot_id is not None else list(self.user_lots[user_id])
+        
+        for lid in target_lot_ids:
+            if lid in self.active_connections and user_id in self.active_connections[lid]:
+                for websocket in self.active_connections[lid][user_id]:
                     try:
                         await websocket.send_json(message)
                     except Exception as e:
-                        logger.error(f"Error broadcasting to user {user_id}: {str(e)}")
-                        dead_connections.append((lot_id, user_id, websocket))
+                        logger.error(f"Error broadcasting to user {user_id} on lot {lid}: {str(e)}")
+                        dead_connections.append((lid, user_id, websocket))
         
         # Clean up dead connections
-        for lot_id, user_id, ws in dead_connections:
-            self.disconnect(ws, lot_id, user_id)
+        for lid, uid, ws in dead_connections:
+            self.disconnect(ws, lid, uid)
     
     async def send_heartbeat(self, lot_id: int):
         """Send heartbeat to all connections for a lot"""
