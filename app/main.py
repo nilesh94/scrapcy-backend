@@ -40,6 +40,7 @@ from app.routes import scrapCategories as category_routes
 from app.routes import locations as location_routes
 from app.routes import market_prices as market_price_routes
 from app.routes import requirements as requirement_routes
+from app.routes import scrap_prices as scrap_prices_routes
 
 # ✨ E-AUCTION ROUTERS (Fixed Imports)
 from app.e_auction.routes import auctions as auction_routes
@@ -115,6 +116,7 @@ app.include_router(location_routes.router)
 app.include_router(market_price_routes.router)
 app.include_router(requirement_routes.router)
 app.include_router(lots.router)
+app.include_router(scrap_prices_routes.router)
 
 # ============================================================================
 # ✨ INCLUDE E-AUCTION ROUTERS (NEW)

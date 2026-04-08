@@ -1,0 +1,547 @@
+import logging
+from datetime import datetime, time
+from decimal import Decimal
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text, select, func, or_
+from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel
+
+from app.database.connection import get_db
+from app.models.scrap_master import (
+    ProductCategory,
+    MaterialFamily,
+    MaterialType,
+    ProductCatalog,
+    ProductGrade,
+    ProductDimension,
+    ProductForm,
+    ScrapPrice,
+)
+from app.models.market_data import Location
+from app.schemas.scrap_master import (
+    ProductCategorySchema,
+    ScrapPriceRead,
+    BulkSheetSyncRequest,
+    BulkSheetSyncResponse,
+    RowResult,
+    SheetPriceRow,
+)
+
+router = APIRouter(
+    prefix="/scrap-prices",
+    tags=["scrap-prices"]
+)
+
+logger = logging.getLogger(__name__)
+
+# Time slot mapping for effective_from construction
+TIME_SLOT_MAP = {
+    "MORNING": "09:00:00",
+    "AFTERNOON": "14:00:00",
+    "EVENING": "18:00:00",
+    None: "00:00:00",
+}
+
+
+# ==========================================
+# GET /master-catalog
+# ==========================================
+@router.get("/master-catalog", response_model=List[ProductCategorySchema])
+def get_master_catalog(
+    category_type: Optional[str] = Query(None, description="Filter by category type: SCRAP | SEMI_FINISHED | FINISHED"),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns full hierarchy tree (categories → families → types → products → grades → dimensions).
+    Uses eager loading to avoid N+1 queries.
+    """
+    query = (
+        db.query(ProductCategory)
+        .options(
+            joinedload(ProductCategory.families).joinedload(MaterialFamily.types)
+            .joinedload(MaterialType.products).joinedload(ProductCatalog.grades)
+            .joinedload(ProductGrade.dimensions),
+            joinedload(ProductCategory.families).joinedload(MaterialFamily.types)
+            .joinedload(MaterialType.forms)
+        )
+    )
+
+    if category_type:
+        query = query.filter(ProductCategory.category_type == category_type.upper())
+
+    categories = query.all()
+    return categories
+
+
+# ==========================================
+# GET /current-prices
+# ==========================================
+@router.get("/current-prices", response_model=List[ScrapPriceRead])
+def get_current_prices(
+    category_type: Optional[str] = None,
+    material_family: Optional[str] = None,
+    material_type: Optional[str] = None,
+    product_code: Optional[str] = None,
+    location_id: Optional[int] = None,
+    grade: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Returns current active prices from V_SCRAP_CURRENT_PRICES view.
+    All filter params are optional.
+    """
+    sql = """
+        SELECT 
+            p.ID as price_id,
+            pc.CATEGORY_NAME as category,
+            pc.CATEGORY_TYPE as category_type,
+            mf.FAMILY_NAME as material_family,
+            mt.TYPE_NAME as material_type,
+            pr.PRODUCT_NAME as product_name,
+            pr.PRODUCT_CODE as product_code,
+            pg.GRADE_NAME as grade,
+            pg.GRADE_CODE as grade_code,
+            pd.DIMENSION_VALUE as dimension,
+            pd.UNIT_TYPE as dimension_unit,
+            pf.FORM_NAME as form,
+            loc.LOCATION_NAME as location_name,
+            loc.CITY as city,
+            loc.STATE as state,
+            loc.GEOGRAPHIC_ZONE as geographic_zone,
+            p.BASE_PRICE as base_price,
+            p.PRICE_UNIT as price_unit,
+            p.CURRENCY as currency,
+            p.EFFECTIVE_FROM as effective_from,
+            p.SOURCE as price_source
+        FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES p
+        JOIN SCRAPCY_APP.PRODUCT_CATEGORIES pc ON p.CATEGORY_ID = pc.ID
+        JOIN SCRAPCY_APP.MATERIAL_FAMILIES mf ON p.FAMILY_ID = mf.ID
+        JOIN SCRAPCY_APP.MATERIAL_TYPES mt ON p.TYPE_ID = mt.ID
+        JOIN SCRAPCY_APP.PRODUCT_CATALOG pr ON p.PRODUCT_ID = pr.ID
+        JOIN SCRAPCY_APP.PRODUCT_GRADES pg ON p.GRADE_ID = pg.ID
+        LEFT JOIN SCRAPCY_APP.PRODUCT_DIMENSIONS pd ON p.DIMENSION_ID = pd.ID
+        LEFT JOIN SCRAPCY_APP.PRODUCT_FORMS pf ON p.FORM_ID = pf.ID
+        JOIN LOCATIONS loc ON p.LOCATION_ID = loc.ID
+        WHERE 1=1
+    """
+    params = {}
+
+    if category_type:
+        sql += " AND UPPER(pc.CATEGORY_TYPE) = :category_type"
+        params["category_type"] = category_type.upper()
+
+    if material_family:
+        sql += " AND UPPER(mf.FAMILY_NAME) = :material_family"
+        params["material_family"] = material_family.upper()
+
+    if material_type:
+        sql += " AND UPPER(mt.TYPE_NAME) = :material_type"
+        params["material_type"] = material_type.upper()
+
+    if product_code:
+        sql += " AND UPPER(pr.PRODUCT_CODE) = :product_code"
+        params["product_code"] = product_code.upper()
+
+    if location_id:
+        sql += " AND p.LOCATION_ID = :location_id"
+        params["location_id"] = location_id
+
+    if grade:
+        sql += " AND UPPER(pg.GRADE_NAME) = :grade"
+        params["grade"] = grade.upper()
+
+    sql += " ORDER BY p.EFFECTIVE_FROM DESC"
+
+    result = db.execute(text(sql), params)
+    rows = result.fetchall()
+
+    prices = []
+    for row in rows:
+        prices.append(ScrapPriceRead(
+            price_id=row.price_id,
+            category=row.category,
+            category_type=row.category_type,
+            material_family=row.material_family,
+            material_type=row.material_type,
+            product_name=row.product_name,
+            product_code=row.product_code,
+            grade=row.grade,
+            grade_code=row.grade_code,
+            dimension=row.dimension,
+            dimension_unit=row.dimension_unit,
+            form=row.form,
+            location_name=row.location_name,
+            city=row.city,
+            state=row.state,
+            geographic_zone=row.geographic_zone,
+            base_price=Decimal(str(row.base_price)),
+            price_unit=row.price_unit,
+            currency=row.currency,
+            effective_from=row.effective_from,
+            price_source=row.price_source,
+        ))
+
+    return prices
+
+
+# ==========================================
+# GET /price-history/{product_code}
+# ==========================================
+@router.get("/price-history/{product_code}", response_model=List[ScrapPriceRead])
+def get_price_history(
+    product_code: str,
+    location_id: Optional[int] = None,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Returns full price history for a product code across all locations.
+    Ordered by effective_from DESC.
+    """
+    query = (
+        db.query(ScrapPrice)
+        .join(ProductCatalog, ScrapPrice.product_id == ProductCatalog.id)
+        .filter(func.upper(ProductCatalog.product_code) == product_code.upper())
+        .filter(ScrapPrice.is_active == 1)
+    )
+
+    if location_id:
+        query = query.filter(ScrapPrice.location_id == location_id)
+
+    if from_date:
+        query = query.filter(ScrapPrice.effective_from >= from_date)
+
+    if to_date:
+        query = query.filter(ScrapPrice.effective_from <= to_date)
+
+    prices = query.order_by(ScrapPrice.effective_from.desc()).all()
+
+    # Build response with denormalized data
+    results = []
+    for p in prices:
+        results.append(ScrapPriceRead(
+            price_id=p.id,
+            category=p.category.category_name if p.category else "",
+            category_type=p.category.category_type if p.category else "",
+            material_family=p.family.family_name if p.family else "",
+            material_type=p.type.type_name if p.type else "",
+            product_name=p.product.product_name if p.product else "",
+            product_code=p.product_code or (p.product.product_code if p.product else ""),
+            grade=p.grade.grade_name if p.grade else "",
+            grade_code=p.grade.grade_code if p.grade else None,
+            dimension=p.dimension.dimension_value if p.dimension else None,
+            dimension_unit=p.dimension.unit_type if p.dimension else None,
+            form=p.form.form_name if p.form else None,
+            location_name=p.location.location_name if p.location else "",
+            city=p.location.city if p.location else None,
+            state=p.location.state if p.location else None,
+            geographic_zone=p.location.geographic_zone if p.location else None,
+            base_price=Decimal(str(p.base_price)),
+            price_unit=p.price_unit,
+            currency=p.currency,
+            effective_from=p.effective_from,
+            price_source=p.source,
+        ))
+
+    return results
+
+
+# ==========================================
+# POST /bulk-sheet-sync
+# ==========================================
+@router.post("/bulk-sheet-sync", response_model=BulkSheetSyncResponse)
+def bulk_sheet_sync(
+    request: BulkSheetSyncRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Receives raw rows from Google Sheets via n8n.
+    - Resolves names to IDs using case-insensitive lookups.
+    - Prevents duplicates for the same day.
+    - Inserts new prices into SCRAP_PRICES.
+    - DB triggers handle PRODUCT_CODE population and closing previous rows.
+    """
+    logger.info(f"Bulk sheet sync started: {len(request.rows)} rows, dry_run={request.dry_run}")
+
+    # --- A. Pre-fetch Maps (Optimization) ---
+    try:
+        # Build Location Map (including search_aliases)
+        loc_map = {}
+        all_locations = db.query(Location).filter(Location.is_active == 1).all()
+        for loc in all_locations:
+            if loc.location_name:
+                loc_map[loc.location_name.strip().lower()] = loc.id
+            if loc.city:
+                loc_map[loc.city.strip().lower()] = loc.id
+            if loc.search_aliases:
+                aliases = [a.strip().lower() for a in loc.search_aliases.split(',') if a.strip()]
+                for alias in aliases:
+                    loc_map[alias] = loc.id
+
+        # Build Category Map
+        cat_map = {}
+        for c in db.query(ProductCategory).filter(ProductCategory.is_active == 1).all():
+            cat_map[c.category_name.strip().lower()] = c.id
+
+        # Build Family Map (keyed by family_name lower)
+        family_map = {}
+        for f in db.query(MaterialFamily).filter(MaterialFamily.is_active == 1).all():
+            family_map[f.family_name.strip().lower()] = f.id
+
+        # Build Type Map
+        type_map = {}
+        for t in db.query(MaterialType).filter(MaterialType.is_active == 1).all():
+            type_map[t.type_name.strip().lower()] = t.id
+
+        # Build Product Map
+        product_map = {}
+        for p in db.query(ProductCatalog).filter(ProductCatalog.is_active == 1).all():
+            product_map[p.product_name.strip().lower()] = p.id
+
+        # Build Grade Map
+        grade_map = {}
+        for g in db.query(ProductGrade).filter(ProductGrade.is_active == 1).all():
+            grade_map[g.grade_name.strip().lower()] = g.id
+
+        # Build Dimension Map
+        dimension_map = {}
+        for d in db.query(ProductDimension).filter(ProductDimension.is_active == 1).all():
+            dimension_map[d.dimension_value.strip().lower()] = d.id
+
+        # Build Form Map
+        form_map = {}
+        for f in db.query(ProductForm).filter(ProductForm.is_active == 1).all():
+            form_map[f.form_name.strip().lower()] = f.id
+
+    except Exception as e:
+        logger.error(f"Failed to load reference data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to load reference data: {str(e)}")
+
+    results: List[RowResult] = []
+    inserted_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    # --- B. Loop through Rows ---
+    for i, row in enumerate(request.rows):
+        row_index = i + 1
+        try:
+            # Parse date - handle both "2024-01-15" and "15/01/2024" formats
+            parsed_date = None
+            for fmt in ["%Y-%m-%d", "%d/%m/%Y"]:
+                try:
+                    parsed_date = datetime.strptime(row.date, fmt).date()
+                    break
+                except ValueError:
+                    continue
+
+            if not parsed_date:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Invalid date format: '{row.date}'"
+                ))
+                error_count += 1
+                continue
+
+            # Construct effective_from from date + time_slot
+            time_str = TIME_SLOT_MAP.get(row.time_slot, TIME_SLOT_MAP[None])
+            effective_from = datetime.combine(parsed_date, time.fromisoformat(time_str))
+
+            # Resolve IDs
+            # 1. Category
+            cat_id = cat_map.get(row.category.strip().lower())
+            if not cat_id:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Category not found: '{row.category}'"
+                ))
+                error_count += 1
+                continue
+
+            # 2. Family
+            family_id = family_map.get(row.material_family.strip().lower())
+            if not family_id:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Material family not found: '{row.material_family}'"
+                ))
+                error_count += 1
+                continue
+
+            # 3. Type
+            type_id = type_map.get(row.material_type.strip().lower())
+            if not type_id:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Material type not found: '{row.material_type}'"
+                ))
+                error_count += 1
+                continue
+
+            # 4. Product
+            product_id = product_map.get(row.product_name.strip().lower())
+            if not product_id:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Product not found: '{row.product_name}'"
+                ))
+                error_count += 1
+                continue
+
+            # 5. Grade
+            grade_id = grade_map.get(row.grade.strip().lower())
+            if not grade_id:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Grade not found: '{row.grade}'"
+                ))
+                error_count += 1
+                continue
+
+            # 6. Dimension (nullable)
+            dimension_id = None
+            if row.dimensions and row.dimensions.strip().upper() != "NA":
+                dimension_id = dimension_map.get(row.dimensions.strip().lower())
+                if not dimension_id:
+                    logger.warning(f"Row {row_index}: Dimension '{row.dimensions}' not found, setting to NULL")
+                    dimension_id = None
+
+            # 7. Form (nullable)
+            form_id = None
+            if row.form and row.form.strip().upper() != "NA":
+                form_id = form_map.get(row.form.strip().lower())
+                if not form_id:
+                    logger.warning(f"Row {row_index}: Form '{row.form}' not found, setting to NULL")
+                    form_id = None
+
+            # 8. Location
+            loc_id = loc_map.get(row.location.strip().lower())
+            if not loc_id:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="error",
+                    reason=f"Location not found: '{row.location}'"
+                ))
+                error_count += 1
+                continue
+
+            # Duplicate check - check if price exists for today
+            dup_check_sql = text("""
+                SELECT COUNT(*) FROM SCRAPCY_APP.SCRAP_PRICES
+                WHERE PRODUCT_ID = :product_id
+                AND GRADE_ID = :grade_id
+                AND NVL(DIMENSION_ID, -1) = NVL(:dimension_id, -1)
+                AND LOCATION_ID = :location_id
+                AND IS_ACTIVE = 1
+                AND TRUNC(EFFECTIVE_FROM) = TRUNC(:effective_from)
+                AND BASE_PRICE = :base_price
+            """)
+            dup_result = db.execute(dup_check_sql, {
+                "product_id": product_id,
+                "grade_id": grade_id,
+                "dimension_id": dimension_id,
+                "location_id": loc_id,
+                "effective_from": effective_from,
+                "base_price": float(row.price),
+            }).scalar()
+
+            if dup_result and dup_result > 0:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="skipped",
+                    product_code=None,
+                    location=row.location,
+                    price=row.price,
+                    reason="duplicate price for today"
+                ))
+                skipped_count += 1
+                continue
+
+            # Skip if dry_run
+            if request.dry_run:
+                results.append(RowResult(
+                    row_index=row_index,
+                    status="success",
+                    product_code=None,
+                    location=row.location,
+                    price=row.price,
+                    reason="dry_run - no insert"
+                ))
+                inserted_count += 1
+                continue
+
+            # Insert new price
+            created_by = f"n8n|SHEET_SYNC|{row.time_slot or 'NO_SLOT'}"
+            new_price = ScrapPrice(
+                category_id=cat_id,
+                family_id=family_id,
+                type_id=type_id,
+                product_id=product_id,
+                grade_id=grade_id,
+                dimension_id=dimension_id,
+                form_id=form_id,
+                location_id=loc_id,
+                base_price=row.price,
+                price_unit=row.per_unit,
+                currency=row.currency,
+                effective_from=effective_from,
+                source=request.source,
+                created_by=created_by,
+            )
+            db.add(new_price)
+            db.flush()  # Get the ID and trigger PRODUCT_CODE population
+
+            results.append(RowResult(
+                row_index=row_index,
+                status="success",
+                product_code=new_price.product_code,
+                location=row.location,
+                price=row.price,
+            ))
+            inserted_count += 1
+
+        except Exception as e:
+            logger.error(f"Row {row_index} processing error: {str(e)}")
+            results.append(RowResult(
+                row_index=row_index,
+                status="error",
+                reason=str(e)
+            ))
+            error_count += 1
+
+    # --- D. Commit Changes ---
+    if not request.dry_run:
+        try:
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Database commit failed: {str(e)}")
+            return BulkSheetSyncResponse(
+                total=len(request.rows),
+                inserted=0,
+                skipped=0,
+                errors=len(request.rows),
+                dry_run=False,
+                results=[RowResult(row_index=i+1, status="error", reason=f"Commit failed: {str(e)}") 
+                        for i in range(len(request.rows))]
+            )
+
+    logger.info(f"Bulk sheet sync completed: {inserted_count} inserted, {skipped_count} skipped, {error_count} errors")
+
+    return BulkSheetSyncResponse(
+        total=len(request.rows),
+        inserted=inserted_count,
+        skipped=skipped_count,
+        errors=error_count,
+        dry_run=request.dry_run,
+        results=results,
+    )
