@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, time
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text, select, func, or_
@@ -18,15 +18,18 @@ from app.models.scrap_master import (
     ProductDimension,
     ProductForm,
     ScrapPrice,
+    ScrapPriceSource,
 )
 from app.models.market_data import Location
 from app.schemas.scrap_master import (
-    ProductCategorySchema,
+    ProductCategoryOut,
     ScrapPriceRead,
     BulkSheetSyncRequest,
     BulkSheetSyncResponse,
     RowResult,
     SheetPriceRow,
+    ScrapPriceSourceOut,
+    UnresolvedItem,
 )
 
 router = APIRouter(
@@ -38,17 +41,17 @@ logger = logging.getLogger(__name__)
 
 # Time slot mapping for effective_from construction
 TIME_SLOT_MAP = {
-    "MORNING": "09:00:00",
-    "AFTERNOON": "14:00:00",
-    "EVENING": "18:00:00",
-    None: "00:00:00",
+    "MORNING": time(9, 0, 0),
+    "AFTERNOON": time(14, 0, 0),
+    "EVENING": time(18, 0, 0),
+    None: time(0, 0, 0),
 }
 
 
 # ==========================================
 # GET /master-catalog
 # ==========================================
-@router.get("/master-catalog", response_model=List[ProductCategorySchema])
+@router.get("/master-catalog", response_model=List[ProductCategoryOut])
 def get_master_catalog(
     category_type: Optional[str] = Query(None, description="Filter by category type: SCRAP | SEMI_FINISHED | FINISHED"),
     db: Session = Depends(get_db)
@@ -114,7 +117,8 @@ def get_current_prices(
             p.PRICE_UNIT as price_unit,
             p.CURRENCY as currency,
             p.EFFECTIVE_FROM as effective_from,
-            p.SOURCE as price_source
+            p.SOURCE as price_source,
+            p.SOURCE_PRICES as source_prices_string
         FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES p
         JOIN SCRAPCY_APP.PRODUCT_CATEGORIES pc ON p.CATEGORY_ID = pc.ID
         JOIN SCRAPCY_APP.MATERIAL_FAMILIES mf ON p.FAMILY_ID = mf.ID
@@ -159,6 +163,13 @@ def get_current_prices(
 
     prices = []
     for row in rows:
+        # Parse source prices string if available
+        sources = []
+        source_count = 0
+        if row.source_prices_string:
+            sources = parse_source_prices_string(row.source_prices_string, Decimal(str(row.base_price)))
+            source_count = len(sources)
+
         prices.append(ScrapPriceRead(
             price_id=row.price_id,
             category=row.category,
@@ -181,9 +192,37 @@ def get_current_prices(
             currency=row.currency,
             effective_from=row.effective_from,
             price_source=row.price_source,
+            sources=sources,
+            source_count=source_count,
         ))
 
     return prices
+
+
+def parse_source_prices_string(raw: Optional[str], base_price: Decimal) -> List[ScrapPriceSourceOut]:
+    """
+    Parse SOURCE_PRICES column from V_SCRAP_CURRENT_PRICES view.
+    Format: "SR_WHATSAPP:32200|SR_MM:32800"
+    """
+    if not raw:
+        return []
+    
+    results = []
+    for part in raw.split('|'):
+        if ':' not in part:
+            continue
+        name, price_str = part.split(':', 1)
+        try:
+            source_price = Decimal(price_str)
+            results.append(ScrapPriceSourceOut(
+                source_name=name,
+                source_price=source_price,
+                variance=source_price - base_price,
+                recorded_at=None  # not available from view string
+            ))
+        except (ValueError, Decimal.InvalidOperation):
+            continue
+    return results
 
 
 # ==========================================
@@ -200,10 +239,12 @@ def get_price_history(
     """
     Returns full price history for a product code across all locations.
     Ordered by effective_from DESC.
+    Includes ScrapPriceSource records loaded via joinedload.
     """
     query = (
         db.query(ScrapPrice)
         .join(ProductCatalog, ScrapPrice.product_id == ProductCatalog.id)
+        .options(joinedload(ScrapPrice.price_sources))
         .filter(func.upper(ProductCatalog.product_code) == product_code.upper())
         .filter(ScrapPrice.is_active == 1)
     )
@@ -220,16 +261,35 @@ def get_price_history(
     prices = query.order_by(ScrapPrice.effective_from.desc()).all()
 
     # Build response with denormalized data
+    # Need to traverse hierarchy: ScrapPrice → ProductCatalog → MaterialType → MaterialFamily → ProductCategory
     results = []
     for p in prices:
+        # Traverse hierarchy for category/family/type info
+        product = p.product
+        material_type = product.type if product else None
+        material_family = material_type.family if material_type else None
+        product_category = material_family.category if material_family else None
+
+        # Build source list from ScrapPriceSource records
+        sources = []
+        for src in p.price_sources:
+            sources.append(ScrapPriceSourceOut(
+                source_name=src.source_name,
+                source_price=Decimal(str(src.source_price)),
+                variance=Decimal(str(src.variance)) if src.variance is not None else None,
+                price_unit=src.price_unit,
+                currency=src.currency,
+                recorded_at=src.recorded_at,
+            ))
+
         results.append(ScrapPriceRead(
             price_id=p.id,
-            category=p.category.category_name if p.category else "",
-            category_type=p.category.category_type if p.category else "",
-            material_family=p.family.family_name if p.family else "",
-            material_type=p.type.type_name if p.type else "",
-            product_name=p.product.product_name if p.product else "",
-            product_code=p.product_code or (p.product.product_code if p.product else ""),
+            category=product_category.category_name if product_category else "",
+            category_type=product_category.category_type if product_category else "",
+            material_family=material_family.family_name if material_family else "",
+            material_type=material_type.type_name if material_type else "",
+            product_name=product.product_name if product else "",
+            product_code=p.product_code or (product.product_code if product else ""),
             grade=p.grade.grade_name if p.grade else "",
             grade_code=p.grade.grade_code if p.grade else None,
             dimension=p.dimension.dimension_value if p.dimension else None,
@@ -244,6 +304,8 @@ def get_price_history(
             currency=p.currency,
             effective_from=p.effective_from,
             price_source=p.source,
+            sources=sources,
+            source_count=len(sources),
         ))
 
     return results
@@ -262,68 +324,111 @@ def bulk_sheet_sync(
     - Resolves names to IDs using case-insensitive lookups.
     - Prevents duplicates for the same day.
     - Inserts new prices into SCRAP_PRICES.
+    - Inserts source price readings into SCRAP_PRICE_SOURCES.
     - DB triggers handle PRODUCT_CODE population and closing previous rows.
+    
+    Follows exact pattern from market_prices.py bulk-sheet-sync.
     """
     logger.info(f"Bulk sheet sync started: {len(request.rows)} rows, dry_run={request.dry_run}")
 
-    # --- A. Pre-fetch Maps (Optimization) ---
-    try:
-        # Build Location Map (including search_aliases)
-        loc_map = {}
-        all_locations = db.query(Location).filter(Location.is_active == 1).all()
-        for loc in all_locations:
-            if loc.location_name:
-                loc_map[loc.location_name.strip().lower()] = loc.id
-            if loc.city:
-                loc_map[loc.city.strip().lower()] = loc.id
-            if loc.search_aliases:
-                aliases = [a.strip().lower() for a in loc.search_aliases.split(',') if a.strip()]
-                for alias in aliases:
-                    loc_map[alias] = loc.id
-
-        # Build Category Map
-        cat_map = {}
-        for c in db.query(ProductCategory).filter(ProductCategory.is_active == 1).all():
-            cat_map[c.category_name.strip().lower()] = c.id
-
-        # Build Family Map (keyed by family_name lower)
-        family_map = {}
-        for f in db.query(MaterialFamily).filter(MaterialFamily.is_active == 1).all():
-            family_map[f.family_name.strip().lower()] = f.id
-
-        # Build Type Map
-        type_map = {}
-        for t in db.query(MaterialType).filter(MaterialType.is_active == 1).all():
-            type_map[t.type_name.strip().lower()] = t.id
-
-        # Build Product Map
-        product_map = {}
-        for p in db.query(ProductCatalog).filter(ProductCatalog.is_active == 1).all():
-            product_map[p.product_name.strip().lower()] = p.id
-
-        # Build Grade Map
-        grade_map = {}
-        for g in db.query(ProductGrade).filter(ProductGrade.is_active == 1).all():
-            grade_map[g.grade_name.strip().lower()] = g.id
-
-        # Build Dimension Map
-        dimension_map = {}
-        for d in db.query(ProductDimension).filter(ProductDimension.is_active == 1).all():
-            dimension_map[d.dimension_value.strip().lower()] = d.id
-
-        # Build Form Map
-        form_map = {}
-        for f in db.query(ProductForm).filter(ProductForm.is_active == 1).all():
-            form_map[f.form_name.strip().lower()] = f.id
-
-    except Exception as e:
-        logger.error(f"Failed to load reference data: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to load reference data: {str(e)}")
-
     results: List[RowResult] = []
+    unresolved: List[UnresolvedItem] = []
     inserted_count = 0
     skipped_count = 0
     error_count = 0
+
+    # --- A. Pre-fetch Maps (Optimization) ---
+    # Build cache lazily on first miss per key
+    cache: Dict[str, Dict] = {
+        "categories": {},   # upper(name) → id
+        "families": {},     # (upper(name), category_id) → id
+        "types": {},        # (upper(name), family_id) → id
+        "products": {},     # (upper(name), type_id) → id
+        "grades": {},       # (upper(name), product_id) → id
+        "dimensions": {},   # (upper(value), grade_id) → id | None
+        "forms": {},        # (upper(name), type_id) → id | None
+        "locations": {},    # upper(name) → id
+    }
+
+    def _populate_locations():
+        if not cache["locations"]:
+            all_locations = db.query(Location).filter(Location.is_active == 1).all()
+            for loc in all_locations:
+                if loc.location_name:
+                    cache["locations"][loc.location_name.strip().upper()] = loc.id
+                if loc.city:
+                    cache["locations"][loc.city.strip().upper()] = loc.id
+                if loc.search_aliases:
+                    aliases = [a.strip().upper() for a in loc.search_aliases.split(',') if a.strip()]
+                    for alias in aliases:
+                        cache["locations"][alias] = loc.id
+
+    def _populate_categories():
+        if not cache["categories"]:
+            for c in db.query(ProductCategory).filter(ProductCategory.is_active == 1).all():
+                cache["categories"][c.category_name.strip().upper()] = c.id
+
+    def _populate_families(category_id: int):
+        key = ("ALL", category_id)
+        if key not in cache["families"]:
+            for f in db.query(MaterialFamily).filter(
+                MaterialFamily.is_active == 1,
+                MaterialFamily.category_id == category_id
+            ).all():
+                cache["families"][(f.family_name.strip().upper(), category_id)] = f.id
+
+    def _populate_types(family_id: int):
+        key = ("ALL", family_id)
+        if key not in cache["types"]:
+            for t in db.query(MaterialType).filter(
+                MaterialType.is_active == 1,
+                MaterialType.family_id == family_id
+            ).all():
+                cache["types"][(t.type_name.strip().upper(), family_id)] = t.id
+
+    def _populate_products(type_id: int):
+        key = ("ALL", type_id)
+        if key not in cache["products"]:
+            for p in db.query(ProductCatalog).filter(
+                ProductCatalog.is_active == 1,
+                ProductCatalog.type_id == type_id
+            ).all():
+                cache["products"][(p.product_name.strip().upper(), type_id)] = p.id
+
+    def _populate_grades(product_id: int):
+        key = ("ALL", product_id)
+        if key not in cache["grades"]:
+            for g in db.query(ProductGrade).filter(
+                ProductGrade.is_active == 1,
+                ProductGrade.product_id == product_id
+            ).all():
+                cache["grades"][(g.grade_name.strip().upper(), product_id)] = g.id
+
+    def _populate_dimensions(grade_id: int):
+        key = ("ALL", grade_id)
+        if key not in cache["dimensions"]:
+            for d in db.query(ProductDimension).filter(
+                ProductDimension.is_active == 1,
+                ProductDimension.grade_id == grade_id
+            ).all():
+                cache["dimensions"][(d.dimension_value.strip().upper(), grade_id)] = d.id
+
+    def _populate_forms(type_id: int):
+        key = ("ALL", type_id)
+        if key not in cache["forms"]:
+            for f in db.query(ProductForm).filter(
+                ProductForm.is_active == 1,
+                ProductForm.type_id == type_id
+            ).all():
+                cache["forms"][(f.form_name.strip().upper(), type_id)] = f.id
+
+    try:
+        # Pre-populate locations (commonly used)
+        _populate_locations()
+        _populate_categories()
+    except Exception as e:
+        logger.error(f"Failed to load reference data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to load reference data: {str(e)}")
 
     # --- B. Loop through Rows ---
     for i, row in enumerate(request.rows):
@@ -333,7 +438,7 @@ def bulk_sheet_sync(
             parsed_date = None
             for fmt in ["%Y-%m-%d", "%d/%m/%Y"]:
                 try:
-                    parsed_date = datetime.strptime(row.date, fmt).date()
+                    parsed_date = datetime.strptime(row.date.strip(), fmt).date()
                     break
                 except ValueError:
                     continue
@@ -342,99 +447,143 @@ def bulk_sheet_sync(
                 results.append(RowResult(
                     row_index=row_index,
                     status="error",
-                    reason=f"Invalid date format: '{row.date}'"
+                    reason=f"Unrecognised date format: '{row.date}'"
                 ))
                 error_count += 1
                 continue
 
             # Construct effective_from from date + time_slot
-            time_str = TIME_SLOT_MAP.get(row.time_slot, TIME_SLOT_MAP[None])
-            effective_from = datetime.combine(parsed_date, time.fromisoformat(time_str))
+            slot_time = TIME_SLOT_MAP.get(
+                row.time_slot.strip().upper() if row.time_slot else None,
+                time(0, 0, 0)
+            )
+            effective_from = datetime.combine(parsed_date, slot_time)
 
-            # Resolve IDs
-            # 1. Category
-            cat_id = cat_map.get(row.category.strip().lower())
+            # --- ID Resolution ---
+            # 1. CATEGORY_ID [HARD]
+            _populate_categories()
+            cat_id = cache["categories"].get(row.category.strip().upper())
             if not cat_id:
+                unresolved.append(UnresolvedItem(
+                    row_index=row_index,
+                    field="category",
+                    value=row.category,
+                    full_row=row.model_dump(exclude={"source_prices"})
+                ))
                 results.append(RowResult(
                     row_index=row_index,
-                    status="error",
-                    reason=f"Category not found: '{row.category}'"
+                    status="unresolved",
+                    reason=f"category not found in catalog: '{row.category}'"
                 ))
-                error_count += 1
                 continue
 
-            # 2. Family
-            family_id = family_map.get(row.material_family.strip().lower())
+            # 2. FAMILY_ID [HARD]
+            _populate_families(cat_id)
+            family_id = cache["families"].get((row.material_family.strip().upper(), cat_id))
             if not family_id:
+                unresolved.append(UnresolvedItem(
+                    row_index=row_index,
+                    field="material_family",
+                    value=row.material_family,
+                    full_row=row.model_dump(exclude={"source_prices"})
+                ))
                 results.append(RowResult(
                     row_index=row_index,
-                    status="error",
-                    reason=f"Material family not found: '{row.material_family}'"
+                    status="unresolved",
+                    reason=f"material_family not found: '{row.material_family}'"
                 ))
-                error_count += 1
                 continue
 
-            # 3. Type
-            type_id = type_map.get(row.material_type.strip().lower())
+            # 3. TYPE_ID [HARD]
+            _populate_types(family_id)
+            type_id = cache["types"].get((row.material_type.strip().upper(), family_id))
             if not type_id:
+                unresolved.append(UnresolvedItem(
+                    row_index=row_index,
+                    field="material_type",
+                    value=row.material_type,
+                    full_row=row.model_dump(exclude={"source_prices"})
+                ))
                 results.append(RowResult(
                     row_index=row_index,
-                    status="error",
-                    reason=f"Material type not found: '{row.material_type}'"
+                    status="unresolved",
+                    reason=f"material_type not found: '{row.material_type}'"
                 ))
-                error_count += 1
                 continue
 
-            # 4. Product
-            product_id = product_map.get(row.product_name.strip().lower())
+            # 4. PRODUCT_ID [HARD]
+            _populate_products(type_id)
+            product_id = cache["products"].get((row.product_name.strip().upper(), type_id))
             if not product_id:
+                unresolved.append(UnresolvedItem(
+                    row_index=row_index,
+                    field="product_name",
+                    value=row.product_name,
+                    full_row=row.model_dump(exclude={"source_prices"})
+                ))
                 results.append(RowResult(
                     row_index=row_index,
-                    status="error",
-                    reason=f"Product not found: '{row.product_name}'"
+                    status="unresolved",
+                    reason=f"product_name not found in catalog: '{row.product_name}'"
                 ))
-                error_count += 1
                 continue
 
-            # 5. Grade
-            grade_id = grade_map.get(row.grade.strip().lower())
+            # 5. GRADE_ID [HARD]
+            _populate_grades(product_id)
+            grade_id = cache["grades"].get((row.grade.strip().upper(), product_id))
             if not grade_id:
+                unresolved.append(UnresolvedItem(
+                    row_index=row_index,
+                    field="grade",
+                    value=row.grade,
+                    full_row=row.model_dump(exclude={"source_prices"})
+                ))
                 results.append(RowResult(
                     row_index=row_index,
-                    status="error",
-                    reason=f"Grade not found: '{row.grade}'"
+                    status="unresolved",
+                    reason=f"grade not found: '{row.grade}'"
                 ))
-                error_count += 1
                 continue
 
-            # 6. Dimension (nullable)
+            # 6. DIMENSION_ID [SOFT]
             dimension_id = None
             if row.dimensions and row.dimensions.strip().upper() != "NA":
-                dimension_id = dimension_map.get(row.dimensions.strip().lower())
+                _populate_dimensions(grade_id)
+                dimension_id = cache["dimensions"].get((row.dimensions.strip().upper(), grade_id))
                 if not dimension_id:
                     logger.warning(f"Row {row_index}: Dimension '{row.dimensions}' not found, setting to NULL")
                     dimension_id = None
 
-            # 7. Form (nullable)
+            # 7. FORM_ID [SOFT]
             form_id = None
             if row.form and row.form.strip().upper() != "NA":
-                form_id = form_map.get(row.form.strip().lower())
+                _populate_forms(type_id)
+                form_id = cache["forms"].get((row.form.strip().upper(), type_id))
                 if not form_id:
                     logger.warning(f"Row {row_index}: Form '{row.form}' not found, setting to NULL")
                     form_id = None
 
-            # 8. Location
-            loc_id = loc_map.get(row.location.strip().lower())
+            # 8. LOCATION_ID [HARD]
+            _populate_locations()
+            loc_id = cache["locations"].get(row.location.strip().upper())
             if not loc_id:
-                results.append(RowResult(
-                    row_index=row_index,
-                    status="error",
-                    reason=f"Location not found: '{row.location}'"
-                ))
-                error_count += 1
-                continue
+                # Fallback: search SEARCH_ALIASES column
+                loc_id = cache["locations"].get(f",{row.location.strip().upper()},")
+                if not loc_id:
+                    unresolved.append(UnresolvedItem(
+                        row_index=row_index,
+                        field="location",
+                        value=row.location,
+                        full_row=row.model_dump(exclude={"source_prices"})
+                    ))
+                    results.append(RowResult(
+                        row_index=row_index,
+                        status="unresolved",
+                        reason=f"location not found: '{row.location}'"
+                    ))
+                    continue
 
-            # Duplicate check - check if price exists for today
+            # --- Duplicate check ---
             dup_check_sql = text("""
                 SELECT COUNT(*) FROM SCRAPCY_APP.SCRAP_PRICES
                 WHERE PRODUCT_ID = :product_id
@@ -461,12 +610,13 @@ def bulk_sheet_sync(
                     product_code=None,
                     location=row.location,
                     price=row.price,
-                    reason="duplicate price for today"
+                    sources_inserted=0,
+                    reason="identical price already recorded for today"
                 ))
                 skipped_count += 1
                 continue
 
-            # Skip if dry_run
+            # --- Skip if dry_run ---
             if request.dry_run:
                 results.append(RowResult(
                     row_index=row_index,
@@ -474,17 +624,15 @@ def bulk_sheet_sync(
                     product_code=None,
                     location=row.location,
                     price=row.price,
+                    sources_inserted=0,
                     reason="dry_run - no insert"
                 ))
                 inserted_count += 1
                 continue
 
-            # Insert new price
+            # --- INSERT SCRAP_PRICES ---
             created_by = f"n8n|SHEET_SYNC|{row.time_slot or 'NO_SLOT'}"
             new_price = ScrapPrice(
-                category_id=cat_id,
-                family_id=family_id,
-                type_id=type_id,
                 product_id=product_id,
                 grade_id=grade_id,
                 dimension_id=dimension_id,
@@ -494,18 +642,45 @@ def bulk_sheet_sync(
                 price_unit=row.per_unit,
                 currency=row.currency,
                 effective_from=effective_from,
+                is_active=1,
                 source=request.source,
                 created_by=created_by,
+                # DO NOT SET: product_code (trigger-managed)
+                # DO NOT SET: effective_to (trigger-managed)
+                # DO NOT SET: updated_at (trigger-managed)
             )
             db.add(new_price)
-            db.flush()  # Get the ID and trigger PRODUCT_CODE population
+            db.flush()  # Flush so trigger fires and new_price.id is populated
 
+            # --- INSERT SCRAP_PRICE_SOURCES ---
+            sources_inserted = 0
+            for source_name, source_price in row.source_prices.items():
+                # Skip if value is None, empty, or zero
+                if source_price is None:
+                    continue
+
+                source_row = ScrapPriceSource(
+                    price_id=new_price.id,
+                    source_name=source_name.upper(),  # normalise to uppercase
+                    source_price=source_price,
+                    price_unit=None,  # inherit from parent
+                    currency=None,    # inherit from parent
+                    variance=source_price - row.price,  # SOURCE_PRICE - BASE_PRICE
+                    notes=None,
+                    recorded_at=effective_from
+                )
+                db.add(source_row)
+                sources_inserted += 1
+
+            # Build RowResult
             results.append(RowResult(
                 row_index=row_index,
                 status="success",
-                product_code=new_price.product_code,
+                product_code=new_price.product_code,  # available after flush
                 location=row.location,
                 price=row.price,
+                sources_inserted=sources_inserted,
+                reason=None
             ))
             inserted_count += 1
 
@@ -530,18 +705,22 @@ def bulk_sheet_sync(
                 inserted=0,
                 skipped=0,
                 errors=len(request.rows),
+                unresolved_count=0,
                 dry_run=False,
                 results=[RowResult(row_index=i+1, status="error", reason=f"Commit failed: {str(e)}") 
-                        for i in range(len(request.rows))]
+                        for i in range(len(request.rows))],
+                unresolved=[]
             )
 
-    logger.info(f"Bulk sheet sync completed: {inserted_count} inserted, {skipped_count} skipped, {error_count} errors")
+    logger.info(f"Bulk sheet sync completed: {inserted_count} inserted, {skipped_count} skipped, {error_count} errors, {len(unresolved)} unresolved")
 
     return BulkSheetSyncResponse(
         total=len(request.rows),
         inserted=inserted_count,
         skipped=skipped_count,
         errors=error_count,
+        unresolved_count=len(unresolved),
         dry_run=request.dry_run,
         results=results,
+        unresolved=unresolved,
     )
