@@ -94,104 +94,104 @@ def get_current_prices(
     """
     Returns current active prices from V_SCRAP_CURRENT_PRICES view.
     All filter params are optional.
+    The view is fully denormalized - no joins needed.
     """
     sql = """
-        SELECT 
-            p.ID as price_id,
-            pc.CATEGORY_NAME as category,
-            pc.CATEGORY_TYPE as category_type,
-            mf.FAMILY_NAME as material_family,
-            mt.TYPE_NAME as material_type,
-            pr.PRODUCT_NAME as product_name,
-            pr.PRODUCT_CODE as product_code,
-            pg.GRADE_NAME as grade,
-            pg.GRADE_CODE as grade_code,
-            pd.DIMENSION_VALUE as dimension,
-            pd.UNIT_TYPE as dimension_unit,
-            pf.FORM_NAME as form,
-            loc.LOCATION_NAME as location_name,
-            loc.CITY as city,
-            loc.STATE as state,
-            loc.GEOGRAPHIC_ZONE as geographic_zone,
-            p.BASE_PRICE as base_price,
-            p.PRICE_UNIT as price_unit,
-            p.CURRENCY as currency,
-            p.EFFECTIVE_FROM as effective_from,
-            p.SOURCE as price_source,
-            p.SOURCE_PRICES as source_prices_string
-        FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES p
-        JOIN SCRAPCY_APP.PRODUCT_CATEGORIES pc ON p.CATEGORY_ID = pc.ID
-        JOIN SCRAPCY_APP.MATERIAL_FAMILIES mf ON p.FAMILY_ID = mf.ID
-        JOIN SCRAPCY_APP.MATERIAL_TYPES mt ON p.TYPE_ID = mt.ID
-        JOIN SCRAPCY_APP.PRODUCT_CATALOG pr ON p.PRODUCT_ID = pr.ID
-        JOIN SCRAPCY_APP.PRODUCT_GRADES pg ON p.GRADE_ID = pg.ID
-        LEFT JOIN SCRAPCY_APP.PRODUCT_DIMENSIONS pd ON p.DIMENSION_ID = pd.ID
-        LEFT JOIN SCRAPCY_APP.PRODUCT_FORMS pf ON p.FORM_ID = pf.ID
-        JOIN LOCATIONS loc ON p.LOCATION_ID = loc.ID
+        SELECT
+            PRICE_ID,
+            CATEGORY,
+            CATEGORY_TYPE,
+            MATERIAL_FAMILY,
+            MATERIAL_TYPE,
+            PRODUCT_NAME,
+            PRODUCT_CODE,
+            GRADE,
+            GRADE_CODE,
+            DIMENSION,
+            DIMENSION_UNIT,
+            FORM,
+            LOCATION_NAME,
+            CITY,
+            STATE,
+            GEOGRAPHIC_ZONE,
+            BASE_PRICE,
+            PRICE_UNIT,
+            CURRENCY,
+            EFFECTIVE_FROM,
+            PRICE_SOURCE,
+            SOURCE_PRICES,
+            SOURCE_COUNT
+        FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES
         WHERE 1=1
     """
     params = {}
 
     if category_type:
-        sql += " AND UPPER(pc.CATEGORY_TYPE) = :category_type"
-        params["category_type"] = category_type.upper()
+        sql += " AND UPPER(CATEGORY_TYPE) = UPPER(:category_type)"
+        params["category_type"] = category_type
 
     if material_family:
-        sql += " AND UPPER(mf.FAMILY_NAME) = :material_family"
-        params["material_family"] = material_family.upper()
+        sql += " AND UPPER(MATERIAL_FAMILY) = UPPER(:material_family)"
+        params["material_family"] = material_family
 
     if material_type:
-        sql += " AND UPPER(mt.TYPE_NAME) = :material_type"
-        params["material_type"] = material_type.upper()
+        sql += " AND UPPER(MATERIAL_TYPE) = UPPER(:material_type)"
+        params["material_type"] = material_type
 
     if product_code:
-        sql += " AND UPPER(pr.PRODUCT_CODE) = :product_code"
-        params["product_code"] = product_code.upper()
+        sql += " AND UPPER(PRODUCT_CODE) = UPPER(:product_code)"
+        params["product_code"] = product_code
 
     if location_id:
-        sql += " AND p.LOCATION_ID = :location_id"
+        # The view doesn't expose LOCATION_ID, so use a subquery to filter
+        sql += """
+            AND PRODUCT_CODE IN (
+                SELECT PRODUCT_CODE FROM SCRAPCY_APP.SCRAP_PRICES
+                WHERE LOCATION_ID = :location_id AND IS_ACTIVE = 1
+            )
+        """
         params["location_id"] = location_id
 
     if grade:
-        sql += " AND UPPER(pg.GRADE_NAME) = :grade"
-        params["grade"] = grade.upper()
+        sql += " AND UPPER(GRADE) = UPPER(:grade)"
+        params["grade"] = grade
 
-    sql += " ORDER BY p.EFFECTIVE_FROM DESC"
+    sql += " ORDER BY EFFECTIVE_FROM DESC"
 
     result = db.execute(text(sql), params)
-    rows = result.fetchall()
+    rows = result.mappings().all()
 
     prices = []
     for row in rows:
         # Parse source prices string if available
         sources = []
         source_count = 0
-        if row.source_prices_string:
-            sources = parse_source_prices_string(row.source_prices_string, Decimal(str(row.base_price)))
+        if row["SOURCE_PRICES"]:
+            sources = parse_source_prices_string(row["SOURCE_PRICES"], Decimal(str(row["BASE_PRICE"])))
             source_count = len(sources)
 
         prices.append(ScrapPriceRead(
-            price_id=row.price_id,
-            category=row.category,
-            category_type=row.category_type,
-            material_family=row.material_family,
-            material_type=row.material_type,
-            product_name=row.product_name,
-            product_code=row.product_code,
-            grade=row.grade,
-            grade_code=row.grade_code,
-            dimension=row.dimension,
-            dimension_unit=row.dimension_unit,
-            form=row.form,
-            location_name=row.location_name,
-            city=row.city,
-            state=row.state,
-            geographic_zone=row.geographic_zone,
-            base_price=Decimal(str(row.base_price)),
-            price_unit=row.price_unit,
-            currency=row.currency,
-            effective_from=row.effective_from,
-            price_source=row.price_source,
+            price_id=row["PRICE_ID"],
+            category=row["CATEGORY"],
+            category_type=row["CATEGORY_TYPE"],
+            material_family=row["MATERIAL_FAMILY"],
+            material_type=row["MATERIAL_TYPE"],
+            product_name=row["PRODUCT_NAME"],
+            product_code=row["PRODUCT_CODE"],
+            grade=row["GRADE"],
+            grade_code=row["GRADE_CODE"],
+            dimension=row["DIMENSION"],
+            dimension_unit=row["DIMENSION_UNIT"],
+            form=row["FORM"],
+            location_name=row["LOCATION_NAME"],
+            city=row["CITY"],
+            state=row["STATE"],
+            geographic_zone=row["GEOGRAPHIC_ZONE"],
+            base_price=Decimal(str(row["BASE_PRICE"])),
+            price_unit=row["PRICE_UNIT"],
+            currency=row["CURRENCY"],
+            effective_from=row["EFFECTIVE_FROM"],
+            price_source=row["PRICE_SOURCE"],
             sources=sources,
             source_count=source_count,
         ))
