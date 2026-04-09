@@ -117,10 +117,11 @@ def get_current_prices(
             BASE_PRICE,
             PRICE_UNIT,
             CURRENCY,
+            SOURCE_PRICES,
+            SOURCE_COUNT,
             EFFECTIVE_FROM,
             PRICE_SOURCE,
-            SOURCE_PRICES,
-            SOURCE_COUNT
+            CREATED_BY
         FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES
         WHERE 1=1
     """
@@ -163,12 +164,15 @@ def get_current_prices(
 
     prices = []
     for row in rows:
-        # Parse source prices string if available
+        # Parse source prices string from SOURCE_PRICES column
         sources = []
-        source_count = 0
-        if row["SOURCE_PRICES"]:
-            sources = parse_source_prices_string(row["SOURCE_PRICES"], Decimal(str(row["BASE_PRICE"])))
-            source_count = len(sources)
+        source_prices_value = row._mapping.get("SOURCE_PRICES")
+        
+        if source_prices_value:
+            sources = parse_source_prices_string(source_prices_value, Decimal(str(row["BASE_PRICE"])))
+        
+        # Get source count from SOURCE_COUNT column (fallback to len(sources) if NULL)
+        source_count = int(row["SOURCE_COUNT"]) if row["SOURCE_COUNT"] is not None else len(sources)
 
         prices.append(ScrapPriceRead(
             price_id=row["PRICE_ID"],
