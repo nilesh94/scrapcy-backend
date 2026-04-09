@@ -144,7 +144,6 @@ def get_current_prices(
         params["product_code"] = product_code
 
     if location_id:
-        # The view doesn't expose LOCATION_ID, so use a subquery to filter
         sql += """
             AND PRODUCT_CODE IN (
                 SELECT PRODUCT_CODE FROM SCRAPCY_APP.SCRAP_PRICES
@@ -160,16 +159,36 @@ def get_current_prices(
     sql += " ORDER BY EFFECTIVE_FROM DESC"
 
     result = db.execute(text(sql), params)
-    rows = result.mappings().all()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # KEY FIX: build a case-insensitive row accessor.
+    # Oracle oracledb in thin mode (Python 3.9) may return column keys in
+    # lowercase even when the SQL aliases are uppercase.
+    # We normalise all keys to uppercase so row access never fails.
+    # ─────────────────────────────────────────────────────────────────────────
+    raw_rows = result.fetchall()
+    col_keys = [k.upper() for k in result.keys()]  # normalise to uppercase
+
+    def get_col(row, col_name):
+        """Case-insensitive column accessor. Returns None if column missing."""
+        try:
+            idx = col_keys.index(col_name.upper())
+            return row[idx]
+        except (ValueError, IndexError):
+            return None
 
     prices = []
-    for row in rows:
+    for row in raw_rows:
+        base_price_raw = get_col(row, "BASE_PRICE")
+        base_price = Decimal(str(base_price_raw)) if base_price_raw is not None else Decimal("0")
+
         # Parse SOURCE_PRICES pipe-delimited string → list of source objects
         # Format: "SR_WHATSAPP:32200|SR_MM:32800" or None
         sources = []
-        source_prices_raw = row["SOURCE_PRICES"]
+        source_prices_raw = get_col(row, "SOURCE_PRICES")
         if source_prices_raw:
-            for part in source_prices_raw.split("|"):
+            for part in str(source_prices_raw).split("|"):
+                part = part.strip()
                 if ":" not in part:
                     continue
                 try:
@@ -178,7 +197,7 @@ def get_current_prices(
                     sources.append(ScrapPriceSourceOut(
                         source_name=name.strip(),
                         source_price=source_price,
-                        variance=source_price - Decimal(str(row["BASE_PRICE"])),
+                        variance=source_price - base_price,
                         price_unit=None,
                         currency=None,
                         recorded_at=None
@@ -186,35 +205,60 @@ def get_current_prices(
                 except Exception:
                     continue
 
-        source_count = int(row["SOURCE_COUNT"]) if row["SOURCE_COUNT"] is not None else len(sources)
+        source_count_raw = get_col(row, "SOURCE_COUNT")
+        source_count = int(source_count_raw) if source_count_raw is not None else len(sources)
 
         prices.append(ScrapPriceRead(
-            price_id=row["PRICE_ID"],
-            category=row["CATEGORY"],
-            category_type=row["CATEGORY_TYPE"],
-            material_family=row["MATERIAL_FAMILY"],
-            material_type=row["MATERIAL_TYPE"],
-            product_name=row["PRODUCT_NAME"],
-            product_code=row["PRODUCT_CODE"],
-            grade=row["GRADE"],
-            grade_code=row["GRADE_CODE"],
-            dimension=row["DIMENSION"],
-            dimension_unit=row["DIMENSION_UNIT"],
-            form=row["FORM"],
-            location_name=row["LOCATION_NAME"],
-            city=row["CITY"],
-            state=row["STATE"],
-            geographic_zone=row["GEOGRAPHIC_ZONE"],
-            base_price=Decimal(str(row["BASE_PRICE"])),
-            price_unit=row["PRICE_UNIT"],
-            currency=row["CURRENCY"],
-            effective_from=row["EFFECTIVE_FROM"],
-            price_source=row["PRICE_SOURCE"],
+            price_id=get_col(row, "PRICE_ID"),
+            category=get_col(row, "CATEGORY") or "",
+            category_type=get_col(row, "CATEGORY_TYPE") or "",
+            material_family=get_col(row, "MATERIAL_FAMILY") or "",
+            material_type=get_col(row, "MATERIAL_TYPE") or "",
+            product_name=get_col(row, "PRODUCT_NAME") or "",
+            product_code=get_col(row, "PRODUCT_CODE") or "",
+            grade=get_col(row, "GRADE") or "",
+            grade_code=get_col(row, "GRADE_CODE"),
+            dimension=get_col(row, "DIMENSION"),
+            dimension_unit=get_col(row, "DIMENSION_UNIT"),
+            form=get_col(row, "FORM"),
+            location_name=get_col(row, "LOCATION_NAME") or "",
+            city=get_col(row, "CITY"),
+            state=get_col(row, "STATE"),
+            geographic_zone=get_col(row, "GEOGRAPHIC_ZONE"),
+            base_price=base_price,
+            price_unit=get_col(row, "PRICE_UNIT") or "INR/MT",
+            currency=get_col(row, "CURRENCY") or "INR",
+            effective_from=get_col(row, "EFFECTIVE_FROM"),
+            price_source=get_col(row, "PRICE_SOURCE") or "",
             sources=sources,
             source_count=source_count
         ))
 
     return prices
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEMPORARY DEBUG ENDPOINT
+# Hit it once after deploy to confirm what keys Oracle actually returns.
+# Remove it once the main endpoint works.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/debug-columns")
+def debug_columns(db: Session = Depends(get_db)):
+    """
+    Temporary debug endpoint. Shows exactly what column keys Oracle returns
+    for V_SCRAP_CURRENT_PRICES. Remove after confirming get_current_prices works.
+    """
+    result = db.execute(text("""
+        SELECT * FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES
+        WHERE ROWNUM = 1
+    """))
+    keys = list(result.keys())
+    return {
+        "column_count": len(keys),
+        "columns_as_returned_by_driver": keys,
+        "columns_uppercased": [k.upper() for k in keys]
+    }
 
 
 def parse_source_prices_string(raw: Optional[str], base_price: Decimal) -> List[ScrapPriceSourceOut]:
