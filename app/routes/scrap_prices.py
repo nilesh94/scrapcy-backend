@@ -164,14 +164,28 @@ def get_current_prices(
 
     prices = []
     for row in rows:
-        # Parse source prices string from SOURCE_PRICES column
+        # Parse SOURCE_PRICES pipe-delimited string → list of source objects
+        # Format: "SR_WHATSAPP:32200|SR_MM:32800" or None
         sources = []
-        source_prices_value = row.get("SOURCE_PRICES")
-        
-        if source_prices_value:
-            sources = parse_source_prices_string(source_prices_value, Decimal(str(row["BASE_PRICE"])))
-        
-        # Get source count from SOURCE_COUNT column (fallback to len(sources) if NULL)
+        source_prices_raw = row["SOURCE_PRICES"]
+        if source_prices_raw:
+            for part in source_prices_raw.split("|"):
+                if ":" not in part:
+                    continue
+                try:
+                    name, price_str = part.split(":", 1)
+                    source_price = Decimal(price_str.strip())
+                    sources.append(ScrapPriceSourceOut(
+                        source_name=name.strip(),
+                        source_price=source_price,
+                        variance=source_price - Decimal(str(row["BASE_PRICE"])),
+                        price_unit=None,
+                        currency=None,
+                        recorded_at=None
+                    ))
+                except Exception:
+                    continue
+
         source_count = int(row["SOURCE_COUNT"]) if row["SOURCE_COUNT"] is not None else len(sources)
 
         prices.append(ScrapPriceRead(
@@ -197,7 +211,7 @@ def get_current_prices(
             effective_from=row["EFFECTIVE_FROM"],
             price_source=row["PRICE_SOURCE"],
             sources=sources,
-            source_count=source_count,
+            source_count=source_count
         ))
 
     return prices
