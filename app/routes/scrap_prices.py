@@ -166,7 +166,7 @@ def get_current_prices(
     for row in rows:
         # Parse source prices string from SOURCE_PRICES column
         sources = []
-        source_prices_value = row._mapping.get("SOURCE_PRICES")
+        source_prices_value = row.get("SOURCE_PRICES")
         
         if source_prices_value:
             sources = parse_source_prices_string(source_prices_value, Decimal(str(row["BASE_PRICE"])))
