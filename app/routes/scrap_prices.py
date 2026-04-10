@@ -492,7 +492,31 @@ def bulk_sheet_sync(
         logger.error(f"Failed to load reference data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to load reference data: {str(e)}")
 
-    # --- B. Loop through Rows ---
+    # --- B. Pre-fetch existing prices for bulk duplicate checking ---
+    # Build a set of existing (product_id, grade_id, dimension_id, location_id, effective_from, base_price) tuples
+    existing_prices_set = set()
+    if not request.dry_run:
+        try:
+            # Get all active prices - we'll check against this set in memory
+            all_active_prices = db.execute(text("""
+                SELECT PRODUCT_ID, GRADE_ID, DIMENSION_ID, LOCATION_ID, EFFECTIVE_FROM, BASE_PRICE
+                FROM SCRAPCY_APP.SCRAP_PRICES
+                WHERE IS_ACTIVE = 1
+            """)).fetchall()
+            
+            for p in all_active_prices:
+                # Use -1 for NULL dimension_id to match NVL logic
+                dim_id = p.DIMENSION_ID if p.DIMENSION_ID is not None else -1
+                existing_prices_set.add((p.PRODUCT_ID, p.GRADE_ID, dim_id, p.LOCATION_ID, p.EFFECTIVE_FROM, float(p.BASE_PRICE)))
+        except Exception as e:
+            logger.error(f"Failed to load existing prices for duplicate check: {str(e)}")
+
+    # Lists for bulk insert operations
+    prices_to_insert = []
+    sources_to_insert = []
+    CHUNK_SIZE = 1000
+
+    # --- C. Loop through Rows ---
     for i, row in enumerate(request.rows):
         row_index = i + 1
         try:
@@ -656,27 +680,11 @@ def bulk_sheet_sync(
                     ))
                     continue
 
-            # --- Duplicate check ---
-            dup_check_sql = text("""
-                SELECT COUNT(*) FROM SCRAPCY_APP.SCRAP_PRICES
-                WHERE PRODUCT_ID = :product_id
-                AND GRADE_ID = :grade_id
-                AND NVL(DIMENSION_ID, -1) = NVL(:dimension_id, -1)
-                AND LOCATION_ID = :location_id
-                AND IS_ACTIVE = 1
-                AND EFFECTIVE_FROM = :effective_from
-                AND BASE_PRICE = :base_price
-            """)
-            dup_result = db.execute(dup_check_sql, {
-                "product_id": product_id,
-                "grade_id": grade_id,
-                "dimension_id": dimension_id,
-                "location_id": loc_id,
-                "effective_from": effective_from,
-                "base_price": float(row.price),
-            }).scalar()
-
-            if dup_result and dup_result > 0:
+            # --- Duplicate check (in-memory) ---
+            dim_id_for_check = dimension_id if dimension_id is not None else -1
+            dup_key = (product_id, grade_id, dim_id_for_check, loc_id, effective_from, float(row.price))
+            
+            if dup_key in existing_prices_set:
                 results.append(RowResult(
                     row_index=row_index,
                     status="skipped",
@@ -703,7 +711,7 @@ def bulk_sheet_sync(
                 inserted_count += 1
                 continue
 
-            # --- INSERT SCRAP_PRICES ---
+            # --- Prepare SCRAP_PRICES for bulk insert ---
             created_by = f"n8n|SHEET_SYNC|{row.time_slot or 'NO_SLOT'}"
             new_price = ScrapPrice(
                 product_id=product_id,
@@ -722,10 +730,9 @@ def bulk_sheet_sync(
                 # DO NOT SET: effective_to (trigger-managed)
                 # DO NOT SET: updated_at (trigger-managed)
             )
-            db.add(new_price)
-            db.flush()  # Flush so trigger fires and new_price.id is populated
+            prices_to_insert.append((new_price, row_index, row.location, row.price))
 
-            # --- INSERT SCRAP_PRICE_SOURCES ---
+            # --- Prepare SCRAP_PRICE_SOURCES for bulk insert ---
             sources_inserted = 0
             for source_name, source_price in row.source_prices.items():
                 # Skip if value is None, empty, or zero
@@ -733,7 +740,7 @@ def bulk_sheet_sync(
                     continue
 
                 source_row = ScrapPriceSource(
-                    price_id=new_price.id,
+                    price_id=None,  # Will be set after flush
                     source_name=source_name.upper(),  # normalise to uppercase
                     source_price=source_price,
                     price_unit=None,  # inherit from parent
@@ -742,20 +749,49 @@ def bulk_sheet_sync(
                     notes=None,
                     recorded_at=effective_from
                 )
-                db.add(source_row)
+                sources_to_insert.append((source_row, len(prices_to_insert) - 1))  # Index into prices_to_insert
                 sources_inserted += 1
 
-            # Build RowResult
+            # Track sources count for this row
             results.append(RowResult(
                 row_index=row_index,
-                status="success",
-                product_code=new_price.product_code,  # available after flush
+                status="pending",  # Will be updated after flush
+                product_code=None,  # Will be updated after flush
                 location=row.location,
                 price=row.price,
                 sources_inserted=sources_inserted,
                 reason=None
             ))
             inserted_count += 1
+
+            # --- Chunk processing: flush when reaching CHUNK_SIZE ---
+            if len(prices_to_insert) >= CHUNK_SIZE:
+                # Add all prices in chunk
+                for price_obj, _, _, _ in prices_to_insert:
+                    db.add(price_obj)
+                db.flush()  # This populates price_obj.id via trigger
+                
+                # Add the corresponding sources (now that IDs are populated)
+                for source_obj, price_idx in sources_to_insert:
+                    source_obj.price_id = prices_to_insert[price_idx][0].id
+                    db.add(source_obj)
+                db.flush()  # Flush sources
+                
+                # Update results with product codes and mark as success
+                for j, (price_obj, r_idx, r_loc, r_price) in enumerate(prices_to_insert):
+                    results[r_idx - 1] = RowResult(
+                        row_index=r_idx,
+                        status="success",
+                        product_code=price_obj.product_code,
+                        location=r_loc,
+                        price=r_price,
+                        sources_inserted=results[r_idx - 1].sources_inserted,
+                        reason=None
+                    )
+                
+                # Clear lists for next chunk
+                prices_to_insert = []
+                sources_to_insert = []
 
         except Exception as e:
             logger.error(f"Row {row_index} processing error: {str(e)}")
@@ -765,6 +801,41 @@ def bulk_sheet_sync(
                 reason=str(e)
             ))
             error_count += 1
+
+    # --- Flush remaining items after loop ---
+    if prices_to_insert and not request.dry_run:
+        try:
+            # Add all remaining prices
+            for price_obj, _, _, _ in prices_to_insert:
+                db.add(price_obj)
+            db.flush()
+            
+            # Add the corresponding sources
+            for source_obj, price_idx in sources_to_insert:
+                source_obj.price_id = prices_to_insert[price_idx][0].id
+                db.add(source_obj)
+            db.flush()
+            
+            # Update results with product codes and mark as success
+            for j, (price_obj, r_idx, r_loc, r_price) in enumerate(prices_to_insert):
+                results[r_idx - 1] = RowResult(
+                    row_index=r_idx,
+                    status="success",
+                    product_code=price_obj.product_code,
+                    location=r_loc,
+                    price=r_price,
+                    sources_inserted=results[r_idx - 1].sources_inserted,
+                    reason=None
+                )
+        except Exception as e:
+            logger.error(f"Failed to flush remaining items: {str(e)}")
+            # Mark remaining as errors
+            for _, r_idx, _, _ in prices_to_insert:
+                results[r_idx - 1] = RowResult(
+                    row_index=r_idx,
+                    status="error",
+                    reason=f"Flush failed: {str(e)}"
+                )
 
     # --- D. Commit Changes ---
     if not request.dry_run:
