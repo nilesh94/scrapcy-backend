@@ -515,10 +515,21 @@ def bulk_sheet_sync(
                 continue
 
             # Construct effective_from from date + time_slot
-            slot_time = TIME_SLOT_MAP.get(
-                row.time_slot.strip().upper() if row.time_slot else None,
-                time(0, 0, 0)
-            )
+            slot_time = time(0, 0, 0) # default
+            if row.time_slot:
+                ts_str = row.time_slot.strip().upper()
+                if ts_str in TIME_SLOT_MAP:
+                    slot_time = TIME_SLOT_MAP[ts_str]
+                else:
+                    # Try to parse "HH:MM" or "HH:MM:SS" directly from the sheet
+                    try:
+                        slot_time = datetime.strptime(ts_str, "%H:%M").time()
+                    except ValueError:
+                        try:
+                            slot_time = datetime.strptime(ts_str, "%H:%M:%S").time()
+                        except ValueError:
+                            logger.warning(f"Unrecognized time format: {ts_str}, defaulting to 00:00:00")
+            
             effective_from = datetime.combine(parsed_date, slot_time)
 
             # --- ID Resolution ---
