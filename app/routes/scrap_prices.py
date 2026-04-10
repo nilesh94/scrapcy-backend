@@ -438,6 +438,7 @@ def bulk_sheet_sync(
                 MaterialFamily.category_id == category_id
             ).all():
                 cache["families"][(f.family_name.strip().upper(), category_id)] = f.id
+            cache["families"][key] = True
 
     def _populate_types(family_id: int):
         key = ("ALL", family_id)
@@ -447,6 +448,7 @@ def bulk_sheet_sync(
                 MaterialType.family_id == family_id
             ).all():
                 cache["types"][(t.type_name.strip().upper(), family_id)] = t.id
+            cache["types"][key] = True
 
     def _populate_products(type_id: int):
         key = ("ALL", type_id)
@@ -456,6 +458,7 @@ def bulk_sheet_sync(
                 ProductCatalog.type_id == type_id
             ).all():
                 cache["products"][(p.product_name.strip().upper(), type_id)] = p.id
+            cache["products"][key] = True
 
     def _populate_grades(product_id: int):
         key = ("ALL", product_id)
@@ -465,6 +468,7 @@ def bulk_sheet_sync(
                 ProductGrade.product_id == product_id
             ).all():
                 cache["grades"][(g.grade_name.strip().upper(), product_id)] = g.id
+            cache["grades"][key] = True
 
     def _populate_dimensions(grade_id: int):
         key = ("ALL", grade_id)
@@ -474,6 +478,7 @@ def bulk_sheet_sync(
                 ProductDimension.grade_id == grade_id
             ).all():
                 cache["dimensions"][(d.dimension_value.strip().upper(), grade_id)] = d.id
+            cache["dimensions"][key] = True
 
     def _populate_forms(type_id: int):
         key = ("ALL", type_id)
@@ -483,6 +488,7 @@ def bulk_sheet_sync(
                 ProductForm.type_id == type_id
             ).all():
                 cache["forms"][(f.form_name.strip().upper(), type_id)] = f.id
+            cache["forms"][key] = True
 
     try:
         # Pre-populate locations (commonly used)
