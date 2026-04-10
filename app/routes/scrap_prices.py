@@ -653,7 +653,7 @@ def bulk_sheet_sync(
                 AND NVL(DIMENSION_ID, -1) = NVL(:dimension_id, -1)
                 AND LOCATION_ID = :location_id
                 AND IS_ACTIVE = 1
-                AND TRUNC(EFFECTIVE_FROM) = TRUNC(:effective_from)
+                AND EFFECTIVE_FROM = :effective_from
                 AND BASE_PRICE = :base_price
             """)
             dup_result = db.execute(dup_check_sql, {
