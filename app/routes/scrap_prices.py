@@ -83,10 +83,15 @@ def get_master_catalog(
 # ==========================================
 @router.get("/current-prices", response_model=List[ScrapPriceRead])
 def get_current_prices(
+    category: Optional[str] = None,
     category_type: Optional[str] = None,
     material_family: Optional[str] = None,
     material_type: Optional[str] = None,
+    product_name: Optional[str] = None,
     product_code: Optional[str] = None,
+    dimension: Optional[str] = None,
+    form: Optional[str] = None,
+    location_name: Optional[str] = None,
     location_id: Optional[int] = None,
     grade: Optional[str] = None,
     db: Session = Depends(get_db)
@@ -127,6 +132,10 @@ def get_current_prices(
     """
     params = {}
 
+    if category:
+        sql += " AND UPPER(CATEGORY) = UPPER(:category)"
+        params["category"] = category
+
     if category_type:
         sql += " AND UPPER(CATEGORY_TYPE) = UPPER(:category_type)"
         params["category_type"] = category_type
@@ -139,9 +148,25 @@ def get_current_prices(
         sql += " AND UPPER(MATERIAL_TYPE) = UPPER(:material_type)"
         params["material_type"] = material_type
 
+    if product_name:
+        sql += " AND UPPER(PRODUCT_NAME) = UPPER(:product_name)"
+        params["product_name"] = product_name
+
     if product_code:
         sql += " AND UPPER(PRODUCT_CODE) = UPPER(:product_code)"
         params["product_code"] = product_code
+
+    if dimension:
+        sql += " AND UPPER(DIMENSION) = UPPER(:dimension)"
+        params["dimension"] = dimension
+
+    if form:
+        sql += " AND UPPER(FORM) = UPPER(:form)"
+        params["form"] = form
+
+    if location_name:
+        sql += " AND UPPER(LOCATION_NAME) = UPPER(:location_name)"
+        params["location_name"] = location_name
 
     if location_id:
         sql += """
