@@ -679,7 +679,15 @@ def bulk_sheet_sync(
                 _populate_dimensions(grade_id)
                 dimension_id = cache["dimensions"].get((row.dimensions.strip().upper(), grade_id))
                 if not dimension_id:
-                    logger.warning(f"Row {row_index}: Dimension '{row.dimensions}' not found, setting to NULL")
+                    #logger.warning(f"Row {row_index}: Dimension '{row.dimensions}' not found, setting to NULL")
+                    logger.warning(
+                        f"\n--- DIMENSION MAPPING ERROR AT ROW {row_index} ---\n"
+                        f"1. Sheet Product : '{row.product_name}' -> Resolved to product_id: {product_id}\n"
+                        f"2. Sheet Grade   : '{row.grade}' -> Resolved to grade_id: {grade_id}\n"
+                        f"3. Sheet Dim     : '{row.dimensions}' -> Cleaned as: '{clean_dim}'\n"
+                        f"FAILURE: The ProductDimension table does not have '{clean_dim}' linked to grade_id {grade_id}.\n"
+                        f"-----------------------------------------"
+                    )
                     dimension_id = None
 
             # 7. FORM_ID [SOFT]
