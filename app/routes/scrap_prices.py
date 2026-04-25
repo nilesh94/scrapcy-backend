@@ -535,10 +535,12 @@ def bulk_sheet_sync(
                 WHERE IS_ACTIVE = 1
             """)).fetchall()
             
-            for p in all_active_prices:
-                # Use -1 for NULL dimension_id to match NVL logic
-                dim_id = p.DIMENSION_ID if p.DIMENSION_ID is not None else -1
-                existing_prices_set.add((p.PRODUCT_ID, p.GRADE_ID, dim_id, p.LOCATION_ID, p.EFFECTIVE_FROM, float(p.BASE_PRICE)))
+            # Use safe tuple unpacking by position to avoid case-sensitivity
+            for row in all_active_prices:
+                p_id, g_id, d_id, l_id, e_from, b_price = row
+                
+                dim_id = d_id if d_id is not None else -1
+                existing_prices_set.add((p_id, g_id, dim_id, l_id, e_from, float(b_price)))
         except Exception as e:
             logger.error(f"Failed to load existing prices for duplicate check: {str(e)}")
 
