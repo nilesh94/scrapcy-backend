@@ -254,6 +254,26 @@ class BulkSheetSyncResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class BulkSyncJobResponse(BaseModel):
+    job_id: str
+    status: str        # "queued" | "processing" | "done" | "failed"
+    message: str
+    total_rows: int
+
+class BulkSyncStatusResponse(BaseModel):
+    job_id: str
+    status: str        # "queued" | "processing" | "done" | "failed"
+    total: int
+    inserted: int
+    skipped: int
+    errors: int
+    unresolved_count: int
+    dry_run: bool
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    results: Optional[List[RowResult]]       # None while processing
+    unresolved: Optional[List[UnresolvedItem]]  # None while processing
+
 
 # ============================================================================
 # LEGACY SCHEMAS (for backward compatibility)
