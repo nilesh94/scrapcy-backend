@@ -1,4 +1,7 @@
 import logging
+import uuid
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, time
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
@@ -30,6 +33,8 @@ from app.schemas.scrap_master import (
     SheetPriceRow,
     ScrapPriceSourceOut,
     UnresolvedItem,
+    BulkSyncJobResponse,
+    BulkSyncStatusResponse
 )
 
 router = APIRouter(
@@ -38,6 +43,14 @@ router = APIRouter(
 )
 
 logger = logging.getLogger(__name__)
+
+# In-memory job store — survives for the lifetime of the process
+# Key: job_id (str UUID), Value: dict with status and result
+_job_store: Dict[str, Dict] = {}
+_job_store_lock = threading.Lock()
+
+# Thread pool for background processing — max 4 concurrent sync jobs
+_executor = ThreadPoolExecutor(max_workers=4)
 
 # Time slot mapping for effective_from construction
 TIME_SLOT_MAP = {
@@ -398,23 +411,11 @@ def get_price_history(
     return results
 
 
-# ==========================================
-# POST /bulk-sheet-sync
-# ==========================================
-@router.post("/bulk-sheet-sync", response_model=BulkSheetSyncResponse)
-def bulk_sheet_sync(
-    request: BulkSheetSyncRequest,
-    db: Session = Depends(get_db)
-):
+def _execute_bulk_sync(db: Session, request: BulkSheetSyncRequest) -> BulkSheetSyncResponse:
     """
-    Receives raw rows from Google Sheets via n8n.
-    - Resolves names to IDs using case-insensitive lookups.
-    - Prevents duplicates for the same day.
-    - Inserts new prices into SCRAP_PRICES.
-    - Inserts source price readings into SCRAP_PRICE_SOURCES.
-    - DB triggers handle PRODUCT_CODE population and closing previous rows.
-    
-    Follows exact pattern from market_prices.py bulk-sheet-sync.
+    Contains all the actual sync logic.
+    Called from background thread with its own db session.
+    Returns BulkSheetSyncResponse.
     """
     logger.info(f"Bulk sheet sync started: {len(request.rows)} rows, dry_run={request.dry_run}")
 
@@ -679,7 +680,8 @@ def bulk_sheet_sync(
             dimension_id = None
             if row.dimensions and row.dimensions.strip().upper() != "NA":
                 _populate_dimensions(grade_id)
-                dimension_id = cache["dimensions"].get((row.dimensions.strip().upper(), grade_id))
+                clean_dim = row.dimensions.strip().upper()
+                dimension_id = cache["dimensions"].get((clean_dim, grade_id))
                 if not dimension_id:
                     logger.warning(
                         f"\n--- DIMENSION MAPPING ERROR AT ROW {row_index} ---\n"
@@ -907,4 +909,130 @@ def bulk_sheet_sync(
         dry_run=request.dry_run,
         results=results,
         unresolved=unresolved,
+    )
+
+def _run_bulk_sync_background(job_id: str, request: BulkSheetSyncRequest):
+    """
+    Runs the actual bulk sync logic in a background thread.
+    Gets its own DB session — never shares with request thread.
+    Updates _job_store with progress and final result.
+    """
+    from app.database.connection import SessionLocal  # import here to avoid circular
+
+    db = SessionLocal()
+    try:
+        with _job_store_lock:
+            _job_store[job_id]["status"] = "processing"
+            _job_store[job_id]["started_at"] = datetime.utcnow()
+
+        # ── Run the existing sync logic ──────────────────────────────────────
+        # Move ALL the logic that was inside bulk_sheet_sync here.
+        # Everything from "Pre-fetch Maps" through to building BulkSheetSyncResponse.
+        # The only difference: use this local `db` session, not a FastAPI dependency.
+
+        result = _execute_bulk_sync(db, request)  
+
+        with _job_store_lock:
+            _job_store[job_id].update({
+                "status": "done",
+                "total": result.total,
+                "inserted": result.inserted,
+                "skipped": result.skipped,
+                "errors": result.errors,
+                "unresolved_count": result.unresolved_count,
+                "results": result.results,
+                "unresolved": result.unresolved,
+                "completed_at": datetime.utcnow(),
+            })
+
+        logger.info(f"Job {job_id} done: {result.inserted} inserted, {result.skipped} skipped, {result.errors} errors")
+
+    except Exception as e:
+        logger.error(f"Job {job_id} failed: {str(e)}")
+        with _job_store_lock:
+            _job_store[job_id].update({
+                "status": "failed",
+                "completed_at": datetime.utcnow(),
+                "results": [],
+                "unresolved": [],
+                "errors": len(request.rows),
+            })
+    finally:
+        db.close()
+
+
+# ==========================================
+# POST /bulk-sheet-sync
+# ==========================================
+@router.post("/bulk-sheet-sync", response_model=BulkSyncJobResponse)
+def bulk_sheet_sync(
+    request: BulkSheetSyncRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Accepts rows from n8n Google Sheet sync.
+    Returns immediately with a job_id.
+    Processing happens in background — poll /bulk-sheet-sync/status/{job_id}
+    """
+    job_id = str(uuid.uuid4())
+
+    # Store initial job state
+    with _job_store_lock:
+        _job_store[job_id] = {
+            "status": "queued",
+            "total": len(request.rows),
+            "inserted": 0,
+            "skipped": 0,
+            "errors": 0,
+            "unresolved_count": 0,
+            "dry_run": request.dry_run,
+            "started_at": None,
+            "completed_at": None,
+            "results": None,
+            "unresolved": None,
+        }
+
+    # Submit to background thread pool
+    # IMPORTANT: get a new DB session for the background thread
+    # Do NOT pass the request-scoped `db` session — it will be closed
+    _executor.submit(_run_bulk_sync_background, job_id, request)
+
+    logger.info(f"Bulk sync job {job_id} queued: {len(request.rows)} rows")
+
+    return BulkSyncJobResponse(
+        job_id=job_id,
+        status="queued",
+        message=f"Job queued. Poll /scrap-prices/bulk-sheet-sync/status/{job_id} for progress.",
+        total_rows=len(request.rows)
+    )
+
+
+# ==========================================
+# GET /bulk-sheet-sync/status/{job_id}
+# ==========================================
+@router.get("/bulk-sheet-sync/status/{job_id}", response_model=BulkSyncStatusResponse)
+def bulk_sheet_sync_status(job_id: str):
+    """
+    Poll this endpoint after posting to /bulk-sheet-sync.
+    Returns current job status and results when done.
+    """
+    with _job_store_lock:
+        job = _job_store.get(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    return BulkSyncStatusResponse(
+        job_id=job_id,
+        status=job["status"],
+        total=job["total"],
+        inserted=job["inserted"],
+        skipped=job["skipped"],
+        errors=job["errors"],
+        unresolved_count=job["unresolved_count"],
+        dry_run=job["dry_run"],
+        started_at=job["started_at"],
+        completed_at=job["completed_at"],
+        results=job["results"],       # None until done
+        unresolved=job["unresolved"], # None until done
     )
