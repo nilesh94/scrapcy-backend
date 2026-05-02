@@ -836,11 +836,12 @@ def _execute_bulk_sync(db: Session, request: BulkSheetSyncRequest) -> BulkSheetS
                 sources_to_insert = []
 
         except Exception as e:
-            logger.error(f"Row {row_index} processing error: {str(e)}")
+            error_msg = str(e).split("[SQL:")[0].strip() if "[SQL:" in str(e) else str(e)
+            logger.error(f"Row {row_index} processing error: {error_msg}")
             results.append(RowResult(
                 row_index=row_index,
                 status="error",
-                reason=str(e)
+                reason=error_msg
             ))
             error_count += 1
 
@@ -870,13 +871,14 @@ def _execute_bulk_sync(db: Session, request: BulkSheetSyncRequest) -> BulkSheetS
                     reason=None
                 )
         except Exception as e:
-            logger.error(f"Failed to flush remaining items: {str(e)}")
+            error_msg = str(e).split("[SQL:")[0].strip() if "[SQL:" in str(e) else str(e)
+            logger.error(f"Failed to flush remaining items: {error_msg}")
             # Mark remaining as errors
             for _, r_idx, _, _ in prices_to_insert:
                 results[r_idx - 1] = RowResult(
                     row_index=r_idx,
                     status="error",
-                    reason=f"Flush failed: {str(e)}"
+                    reason=f"Flush failed: {error_msg}"
                 )
 
     # --- D. Commit Changes ---
@@ -885,7 +887,8 @@ def _execute_bulk_sync(db: Session, request: BulkSheetSyncRequest) -> BulkSheetS
             db.commit()
         except Exception as e:
             db.rollback()
-            logger.error(f"Database commit failed: {str(e)}")
+            error_msg = str(e).split("[SQL:")[0].strip() if "[SQL:" in str(e) else str(e)
+            logger.error(f"Database commit failed: {error_msg}")
             return BulkSheetSyncResponse(
                 total=len(request.rows),
                 inserted=0,
@@ -893,7 +896,7 @@ def _execute_bulk_sync(db: Session, request: BulkSheetSyncRequest) -> BulkSheetS
                 errors=len(request.rows),
                 unresolved_count=0,
                 dry_run=False,
-                results=[RowResult(row_index=i+1, status="error", reason=f"Commit failed: {str(e)}") 
+                results=[RowResult(row_index=i+1, status="error", reason=f"Commit failed: {error_msg}") 
                         for i in range(len(request.rows))],
                 unresolved=[]
             )
@@ -948,7 +951,8 @@ def _run_bulk_sync_background(job_id: str, request: BulkSheetSyncRequest):
         logger.info(f"Job {job_id} done: {result.inserted} inserted, {result.skipped} skipped, {result.errors} errors")
 
     except Exception as e:
-        logger.error(f"Job {job_id} failed: {str(e)}")
+        error_msg = str(e).split("[SQL:")[0].strip() if "[SQL:" in str(e) else str(e)
+        logger.error(f"Job {job_id} failed: {error_msg}")
         with _job_store_lock:
             _job_store[job_id].update({
                 "status": "failed",
