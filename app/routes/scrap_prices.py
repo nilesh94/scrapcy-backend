@@ -115,33 +115,38 @@ def get_current_prices(
     The view is fully denormalized - no joins needed.
     """
     sql = """
-        SELECT
-            PRICE_ID,
-            CATEGORY,
-            CATEGORY_TYPE,
-            MATERIAL_FAMILY,
-            MATERIAL_TYPE,
-            PRODUCT_NAME,
-            PRODUCT_CODE,
-            GRADE,
-            GRADE_CODE,
-            DIMENSION,
-            DIMENSION_UNIT,
-            FORM,
-            LOCATION_NAME,
-            CITY,
-            STATE,
-            GEOGRAPHIC_ZONE,
-            BASE_PRICE,
-            PRICE_UNIT,
-            CURRENCY,
-            SOURCE_PRICES,
-            SOURCE_COUNT,
-            EFFECTIVE_FROM,
-            PRICE_SOURCE,
-            CREATED_BY
-        FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES
-        WHERE 1=1
+        WITH RankedPrices AS (
+            SELECT
+                PRICE_ID,
+                CATEGORY,
+                CATEGORY_TYPE,
+                MATERIAL_FAMILY,
+                MATERIAL_TYPE,
+                PRODUCT_NAME,
+                PRODUCT_CODE,
+                GRADE,
+                GRADE_CODE,
+                DIMENSION,
+                DIMENSION_UNIT,
+                FORM,
+                LOCATION_NAME,
+                CITY,
+                STATE,
+                GEOGRAPHIC_ZONE,
+                BASE_PRICE,
+                PRICE_UNIT,
+                CURRENCY,
+                SOURCE_PRICES,
+                SOURCE_COUNT,
+                EFFECTIVE_FROM,
+                PRICE_SOURCE,
+                CREATED_BY,
+                ROW_NUMBER() OVER (
+                    PARTITION BY PRODUCT_NAME, GRADE, DIMENSION, LOCATION_NAME 
+                    ORDER BY EFFECTIVE_FROM DESC
+                ) as rn
+            FROM SCRAPCY_APP.V_SCRAP_CURRENT_PRICES
+            WHERE 1=1
     """
     params = {}
 
@@ -194,7 +199,12 @@ def get_current_prices(
         sql += " AND UPPER(GRADE) = UPPER(:grade)"
         params["grade"] = grade
 
-    sql += " ORDER BY EFFECTIVE_FROM DESC"
+    sql += """
+        )
+        SELECT * FROM RankedPrices 
+        WHERE rn = 1
+        ORDER BY PRODUCT_NAME, GRADE
+    """
 
     result = db.execute(text(sql), params)
 
